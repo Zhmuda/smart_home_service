@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models import DeviceStateEvent, Scenario, ScenarioRun
+from app.ws import manager
 from app.yandex_client import client
 
 POLL_INTERVAL_SECONDS = 30
@@ -17,6 +19,9 @@ scheduler = AsyncIOScheduler()
 StateKey = tuple[str, str, str]
 
 _last_snapshot: dict[StateKey, Any] | None = None
+_value_since: dict[StateKey, tuple[Any, datetime]] = {}
+
+engine_status: dict[str, Any] = {"ok": True, "last_poll_at": None, "last_error": None}
 
 
 def build_snapshot(user_info: dict) -> tuple[dict[StateKey, Any], dict[str, str]]:
@@ -56,7 +61,25 @@ def evaluate_operator(operator: str, current: Any, target: Any) -> bool:
 
 def evaluate_rule(rule: dict, snapshot: dict[StateKey, Any]) -> bool:
     key = (rule["device_id"], rule["capability_type"], rule["instance"])
-    return evaluate_operator(rule.get("operator", "eq"), snapshot.get(key), rule.get("value"))
+    current = snapshot.get(key)
+    if not evaluate_operator(rule.get("operator", "eq"), current, rule.get("value")):
+        return False
+    for_seconds = rule.get("for_seconds")
+    if for_seconds:
+        since = _value_since.get(key)
+        if since is None or since[0] != current:
+            return False
+        if (datetime.utcnow() - since[1]).total_seconds() < for_seconds:
+            return False
+    return True
+
+
+def evaluate_conditions(conditions: list[dict], snapshot: dict[StateKey, Any]) -> bool:
+    for group in conditions:
+        rules = group.get("rules", [])
+        if rules and not any(evaluate_rule(rule, snapshot) for rule in rules):
+            return False
+    return True
 
 
 async def run_scenario(
@@ -69,7 +92,7 @@ async def run_scenario(
         user_info = await client.get_user_info()
         snapshot, _ = build_snapshot(user_info)
 
-    if not all(evaluate_rule(rule, snapshot) for rule in scenario.conditions):
+    if not evaluate_conditions(scenario.conditions, snapshot):
         run = ScenarioRun(
             scenario_id=scenario.id,
             trigger_kind=trigger_kind,
@@ -83,6 +106,9 @@ async def run_scenario(
     results = []
     has_error = False
     for action in scenario.actions:
+        delay = action.get("delay_seconds") or 0
+        if delay:
+            await asyncio.sleep(delay)
         try:
             res = await client.send_actions(
                 action["device_id"],
@@ -106,10 +132,24 @@ async def run_scenario(
 
 async def poll_tick() -> None:
     global _last_snapshot
-    db = SessionLocal()
+    now = datetime.utcnow()
     try:
         user_info = await client.get_user_info()
+    except Exception as e:
+        engine_status["ok"] = False
+        engine_status["last_poll_at"] = now.isoformat()
+        engine_status["last_error"] = str(e)
+        await manager.broadcast({"type": "status", **engine_status})
+        return
+
+    db = SessionLocal()
+    try:
         snapshot, device_names = build_snapshot(user_info)
+
+        for key, value in snapshot.items():
+            prev = _value_since.get(key)
+            if prev is None or prev[0] != value:
+                _value_since[key] = (value, now)
 
         if _last_snapshot is not None:
             changed_keys = {key for key, value in snapshot.items() if _last_snapshot.get(key) != value}
@@ -122,7 +162,7 @@ async def poll_tick() -> None:
                         capability_type=capability_type,
                         instance=instance,
                         value=snapshot[key],
-                        recorded_at=datetime.utcnow(),
+                        recorded_at=now,
                     )
                 )
             if changed_keys:
@@ -139,6 +179,12 @@ async def poll_tick() -> None:
                         await run_scenario(db, scenario, "device_state", snapshot)
 
         _last_snapshot = snapshot
+
+        engine_status["ok"] = True
+        engine_status["last_poll_at"] = now.isoformat()
+        engine_status["last_error"] = None
+        await manager.broadcast({"type": "snapshot", "data": user_info})
+        await manager.broadcast({"type": "status", **engine_status})
     finally:
         db.close()
 

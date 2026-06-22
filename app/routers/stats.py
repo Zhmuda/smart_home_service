@@ -1,13 +1,43 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import DeviceStateEvent, ScenarioRun
+from app.models import DeviceStateEvent, Scenario, ScenarioRun
 from app.schemas import DeviceStateEventOut, ScenarioRunOut
 
 router = APIRouter(prefix="/stats", tags=["stats"])
+
+
+@router.get("/summary")
+def scenario_summary(db: Session = Depends(get_db)):
+    rows = (
+        db.query(
+            ScenarioRun.scenario_id,
+            Scenario.name,
+            func.count(ScenarioRun.id).label("total"),
+            func.sum(case((ScenarioRun.status == "ok", 1), else_=0)).label("ok"),
+            func.sum(case((ScenarioRun.status == "error", 1), else_=0)).label("error"),
+            func.max(ScenarioRun.triggered_at).label("last_run_at"),
+        )
+        .join(Scenario, Scenario.id == ScenarioRun.scenario_id)
+        .group_by(ScenarioRun.scenario_id, Scenario.name)
+        .all()
+    )
+    return [
+        {
+            "scenario_id": r.scenario_id,
+            "name": r.name,
+            "total": r.total,
+            "ok": r.ok,
+            "error": r.error,
+            "success_rate": round(r.ok / r.total * 100) if r.total else 0,
+            "last_run_at": r.last_run_at,
+        }
+        for r in rows
+    ]
 
 
 @router.get("/devices/{device_id}/history", response_model=list[DeviceStateEventOut])

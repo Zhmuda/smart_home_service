@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { fetchDevices, fetchScenarios, sendAction } from '../api'
+import { fetchScenarios, sendAction } from '../api'
 import { getOperatorLabel, getStateLabel } from '../capabilityLabels'
 import DeviceHistory from '../components/DeviceHistory'
 import ScenarioRunsList from '../components/ScenarioRunsList'
@@ -9,33 +9,37 @@ import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent } from '../components/ui/card'
 import ValueEditor from '../components/ValueEditor'
+import { useLive } from '../contexts/LiveContext'
 import { getControllableItems } from '../deviceItems'
-import type { Device, Room, Scenario } from '../types'
+import type { Device, Scenario } from '../types'
 
 function referencesDevice(scenario: Scenario, deviceId: string): boolean {
   const t = scenario.trigger
   if (t.kind === 'device_state' && t.device_id === deviceId) return true
-  if (scenario.conditions.some((c) => c.device_id === deviceId)) return true
+  if (scenario.conditions.some((g) => g.rules.some((r) => r.device_id === deviceId))) return true
   if (scenario.actions.some((a) => a.device_id === deviceId)) return true
   return false
 }
 
 export default function DeviceDetailPage() {
   const { deviceId } = useParams<{ deviceId: string }>()
-  const [device, setDevice] = useState<Device | null>(null)
-  const [room, setRoom] = useState<Room | null>(null)
+  const { devices: liveData } = useLive()
+  const [override, setOverride] = useState<Device | null>(null)
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [expanded, setExpanded] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const liveDevice = liveData?.devices.find((d) => d.id === deviceId) ?? null
+  const device = override ?? liveDevice
+  const room = liveData?.rooms.find((r) => r.devices.includes(deviceId ?? '')) ?? null
+
   useEffect(() => {
-    Promise.all([fetchDevices(), fetchScenarios()])
-      .then(([info, list]) => {
-        const found = info.devices.find((d) => d.id === deviceId) ?? null
-        setDevice(found)
-        setRoom(info.rooms.find((r) => r.devices.includes(deviceId ?? '')) ?? null)
-        setScenarios(list.filter((s) => deviceId && referencesDevice(s, deviceId)))
-      })
+    setOverride(null)
+  }, [liveDevice])
+
+  useEffect(() => {
+    fetchScenarios()
+      .then((list) => setScenarios(list.filter((s) => deviceId && referencesDevice(s, deviceId))))
       .catch((e) => setError(e.message))
   }, [deviceId])
 
@@ -43,7 +47,7 @@ export default function DeviceDetailPage() {
     if (!device) return
     try {
       await sendAction(device.id, item.capability_type, item.instance, value)
-      setDevice({
+      setOverride({
         ...device,
         capabilities: device.capabilities.map((c) =>
           c.type === item.capability_type && c.state?.instance === item.instance

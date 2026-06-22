@@ -1,5 +1,7 @@
 import { BarChart3, Home, Workflow } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { useLive } from '../contexts/LiveContext'
 import { cn } from '../lib/utils'
 
 const NAV = [
@@ -7,6 +9,40 @@ const NAV = [
   { to: '/scenarios', label: 'Сценарии', icon: Workflow, end: false },
   { to: '/stats', label: 'Статистика', icon: BarChart3, end: false },
 ]
+
+const STALE_AFTER_SECONDS = 70
+
+function ConnectionStatus() {
+  const { status } = useLive()
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  if (!status || !status.last_poll_at) {
+    return (
+      <div className="flex items-center gap-2 px-2 text-xs text-sidebar-muted">
+        <span className="h-2 w-2 rounded-full bg-gray-400" />
+        Подключение…
+      </div>
+    )
+  }
+
+  const secondsAgo = Math.max(0, Math.round((now - new Date(status.last_poll_at).getTime()) / 1000))
+  const isStale = !status.ok || secondsAgo > STALE_AFTER_SECONDS
+
+  return (
+    <div className="flex flex-col gap-0.5 px-2 text-xs">
+      <div className={cn('flex items-center gap-2', isStale ? 'text-red-400' : 'text-sidebar-muted')}>
+        <span className={cn('h-2 w-2 rounded-full', isStale ? 'bg-red-500' : 'bg-emerald-500')} />
+        {status.ok ? `Обновлено ${secondsAgo} сек назад` : 'Нет связи с Yandex API'}
+      </div>
+      {status.last_error && <div className="truncate text-red-400" title={status.last_error}>{status.last_error}</div>}
+    </div>
+  )
+}
 
 export default function Sidebar() {
   return (
@@ -33,6 +69,9 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <div className="mt-auto px-3 py-4">
+        <ConnectionStatus />
+      </div>
     </aside>
   )
 }

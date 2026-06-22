@@ -12,6 +12,11 @@ class Rule(BaseModel):
     instance: str
     operator: Operator = "eq"
     value: Any
+    for_seconds: int | None = Field(default=None, ge=1)
+
+
+class ConditionGroup(BaseModel):
+    rules: list[Rule] = []
 
 
 class ScheduleTrigger(BaseModel):
@@ -43,13 +48,14 @@ class ActionItem(BaseModel):
     type: str
     instance: str
     value: Any
+    delay_seconds: int = Field(default=0, ge=0, le=3600)
 
 
 class ScenarioBase(BaseModel):
     name: str
     enabled: bool = True
     trigger: Trigger
-    conditions: list[Rule] = []
+    conditions: list[ConditionGroup] = []
     actions: list[ActionItem]
 
 

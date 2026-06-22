@@ -38,6 +38,11 @@ export interface Rule {
   instance: string
   operator: Operator
   value: unknown
+  for_seconds?: number | null
+}
+
+export interface ConditionGroup {
+  rules: Rule[]
 }
 
 export interface ScheduleTrigger {
@@ -65,6 +70,7 @@ export interface ActionItem {
   type: string
   instance: string
   value: unknown
+  delay_seconds?: number
 }
 
 export interface Scenario {
@@ -72,10 +78,20 @@ export interface Scenario {
   name: string
   enabled: boolean
   trigger: Trigger
-  conditions: Rule[]
+  conditions: ConditionGroup[]
   actions: ActionItem[]
   created_at: string
   updated_at: string
+}
+
+export interface ScenarioSummary {
+  scenario_id: number
+  name: string
+  total: number
+  ok: number
+  error: number
+  success_rate: number
+  last_run_at: string | null
 }
 
 export type ScenarioInput = Omit<Scenario, 'id' | 'created_at' | 'updated_at'>

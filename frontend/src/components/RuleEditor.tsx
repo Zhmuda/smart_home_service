@@ -4,6 +4,7 @@ import { getObservableItems } from '../deviceItems'
 import type { Device, Operator, Rule } from '../types'
 import StatePicker from './StatePicker'
 import { Button } from './ui/button'
+import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import ValueEditor from './ValueEditor'
@@ -15,11 +16,13 @@ export default function RuleEditor({
   rule,
   onChange,
   onRemove,
+  showDuration = false,
 }: {
   devices: Device[]
   rule: Rule
   onChange: (rule: Rule) => void
   onRemove?: () => void
+  showDuration?: boolean
 }) {
   const device = devices.find((d) => d.id === rule.device_id)
   const items = device ? getObservableItems(device) : []
@@ -62,6 +65,21 @@ export default function RuleEditor({
           onChange={(v) => onChange({ ...rule, value: v })}
         />
       </div>
+      {showDuration && (
+        <div className="flex flex-col gap-1">
+          <Label>Не менее, сек</Label>
+          <Input
+            type="number"
+            min={1}
+            className="w-28"
+            placeholder="сразу"
+            value={rule.for_seconds ?? ''}
+            onChange={(e) =>
+              onChange({ ...rule, for_seconds: e.target.value === '' ? null : Number(e.target.value) })
+            }
+          />
+        </div>
+      )}
       {onRemove && (
         <Button type="button" variant="ghost" size="icon" className="ml-auto text-muted-foreground" onClick={onRemove}>
           <X className="h-4 w-4" />

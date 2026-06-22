@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import type { ActionItem, Device, Rule, Scenario, ScenarioInput, Trigger } from '../types'
+import type { ActionItem, ConditionGroup, Device, Scenario, ScenarioInput, Trigger } from '../types'
 import ActionEditor from './ActionEditor'
-import RuleEditor from './RuleEditor'
+import ConditionGroupEditor from './ConditionGroupEditor'
 import TriggerEditor from './TriggerEditor'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -24,14 +24,10 @@ export default function ScenarioForm({
   const [name, setName] = useState(initial?.name ?? '')
   const [enabled, setEnabled] = useState(initial?.enabled ?? true)
   const [trigger, setTrigger] = useState<Trigger>(initial?.trigger ?? { kind: 'manual' })
-  const [conditions, setConditions] = useState<Rule[]>(initial?.conditions ?? [])
+  const [conditions, setConditions] = useState<ConditionGroup[]>(initial?.conditions ?? [])
   const [actions, setActions] = useState<ActionItem[]>(initial?.actions ?? [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  function addCondition() {
-    setConditions([...conditions, { device_id: '', capability_type: '', instance: '', operator: 'eq', value: true }])
-  }
 
   function addAction() {
     setActions([...actions, { device_id: '', type: '', instance: '', value: true }])
@@ -86,20 +82,7 @@ export default function ScenarioForm({
           {conditions.length === 0 && (
             <p className="mb-2 text-sm text-muted-foreground">Без условий — сценарий сработает сразу при триггере</p>
           )}
-          <div className="flex flex-col gap-2">
-            {conditions.map((rule, i) => (
-              <RuleEditor
-                key={i}
-                devices={devices}
-                rule={rule}
-                onChange={(r) => setConditions(conditions.map((c, j) => (j === i ? r : c)))}
-                onRemove={() => setConditions(conditions.filter((_, j) => j !== i))}
-              />
-            ))}
-          </div>
-          <Button type="button" variant="outline" size="sm" className="mt-2" onClick={addCondition}>
-            + добавить условие
-          </Button>
+          <ConditionGroupEditor devices={devices} groups={conditions} onChange={setConditions} />
         </CardContent>
       </Card>
 

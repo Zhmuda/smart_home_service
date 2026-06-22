@@ -1,4 +1,4 @@
-import type { DeviceStateEvent, Scenario, ScenarioInput, ScenarioRun, UserInfo } from './types'
+import type { DeviceStateEvent, Scenario, ScenarioInput, ScenarioRun, ScenarioSummary, UserInfo } from './types'
 
 const BASE = '/api'
 
@@ -9,6 +9,16 @@ async function asJson<T>(res: Response): Promise<T> {
 
 export async function fetchDevices(): Promise<UserInfo> {
   return asJson(await fetch(`${BASE}/devices`))
+}
+
+export interface EngineStatus {
+  ok: boolean
+  last_poll_at: string | null
+  last_error: string | null
+}
+
+export async function fetchStatus(): Promise<EngineStatus> {
+  return asJson(await fetch(`${BASE}/status`))
 }
 
 export async function sendAction(
@@ -64,6 +74,10 @@ export async function fetchScenarioRuns(id: number): Promise<ScenarioRun[]> {
 
 export async function fetchAllRuns(limit = 100): Promise<ScenarioRun[]> {
   return asJson(await fetch(`${BASE}/stats/runs?limit=${limit}`))
+}
+
+export async function fetchScenarioSummary(): Promise<ScenarioSummary[]> {
+  return asJson(await fetch(`${BASE}/stats/summary`))
 }
 
 export async function fetchDeviceHistory(

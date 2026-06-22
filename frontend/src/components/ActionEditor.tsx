@@ -3,6 +3,7 @@ import { getControllableItems } from '../deviceItems'
 import type { ActionItem, Device } from '../types'
 import StatePicker from './StatePicker'
 import { Button } from './ui/button'
+import { Input } from './ui/input'
 import { Label } from './ui/label'
 import ValueEditor from './ValueEditor'
 
@@ -41,6 +42,18 @@ export default function ActionEditor({
           instance={action.instance}
           parameters={current?.parameters}
           onChange={(v) => onChange({ ...action, value: v })}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label>Задержка перед действием, сек</Label>
+        <Input
+          type="number"
+          min={0}
+          max={3600}
+          className="w-28"
+          placeholder="0"
+          value={action.delay_seconds ?? ''}
+          onChange={(e) => onChange({ ...action, delay_seconds: e.target.value === '' ? 0 : Number(e.target.value) })}
         />
       </div>
       {onRemove && (

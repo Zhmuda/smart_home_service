@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchDevices, sendAction } from '../api'
+import { sendAction } from '../api'
 import ValueEditor from '../components/ValueEditor'
 import { Card, CardContent } from '../components/ui/card'
+import { useLive } from '../contexts/LiveContext'
 import type { Device, UserInfo } from '../types'
 
 const ON_OFF = 'devices.capabilities.on_off'
@@ -39,18 +40,19 @@ function DeviceCard({
 }
 
 export default function DevicesPage() {
-  const [data, setData] = useState<UserInfo | null>(null)
+  const { devices: liveData } = useLive()
+  const [override, setOverride] = useState<UserInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const data = override ?? liveData
+
   useEffect(() => {
-    fetchDevices()
-      .then(setData)
-      .catch((e) => setError(e.message))
-  }, [])
+    setOverride(null)
+  }, [liveData])
 
   async function handleToggle(device: Device, next: boolean) {
     if (!data) return
-    setData({
+    setOverride({
       ...data,
       devices: data.devices.map((d) =>
         d.id === device.id
@@ -67,7 +69,7 @@ export default function DevicesPage() {
       await sendAction(device.id, ON_OFF, 'on', next)
     } catch (e) {
       setError((e as Error).message)
-      fetchDevices().then(setData)
+      setOverride(null)
     }
   }
 
