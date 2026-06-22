@@ -2,7 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fetchScenarios, sendAction } from '../api'
-import { getOperatorLabel, getStateLabel } from '../capabilityLabels'
+import { getDeviceStateLabel, getOperatorLabel, getStateLabel } from '../capabilityLabels'
 import DeviceHistory from '../components/DeviceHistory'
 import ScenarioRunsList from '../components/ScenarioRunsList'
 import { Badge } from '../components/ui/badge'
@@ -72,7 +72,12 @@ export default function DeviceDetailPage() {
           <ArrowLeft className="h-3.5 w-3.5" />
           Все устройства
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">{device.name}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">{device.name}</h1>
+          {device.state && device.state !== 'online' && (
+            <Badge variant="destructive">{getDeviceStateLabel(device.state)}</Badge>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground">
           {room?.name ? `${room.name} · ` : ''}
           {device.type.replace('devices.types.', '')}

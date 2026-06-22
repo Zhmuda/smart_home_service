@@ -90,3 +90,14 @@ const STATUS_LABELS: Record<string, string> = {
 export function getStatusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status
 }
+
+const DEVICE_STATE_LABELS: Record<string, string> = {
+  offline: 'офлайн',
+  not_found: 'не найдено',
+  unknown: 'неизвестно',
+  removed: 'удалено',
+}
+
+export function getDeviceStateLabel(state: string): string {
+  return DEVICE_STATE_LABELS[state] ?? state
+}

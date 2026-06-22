@@ -17,6 +17,7 @@ export interface Device {
   room?: string
   capabilities: Capability[]
   properties: Capability[]
+  state?: string
 }
 
 export interface Room {

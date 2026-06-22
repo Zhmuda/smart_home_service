@@ -23,6 +23,26 @@ _value_since: dict[StateKey, tuple[Any, datetime]] = {}
 
 engine_status: dict[str, Any] = {"ok": True, "last_poll_at": None, "last_error": None}
 
+# device_id -> "online" | "offline", refreshed every poll tick. GET /user/info doesn't
+# report this per-device, only GET /devices/{id} does, so it's fetched separately.
+device_states: dict[str, str] = {}
+
+
+async def refresh_device_states(device_ids: list[str]) -> None:
+    results = await asyncio.gather(*(client.get_device(did) for did in device_ids), return_exceptions=True)
+    for device_id, result in zip(device_ids, results):
+        if isinstance(result, Exception):
+            continue
+        state = result.get("state")
+        if state:
+            device_states[device_id] = state
+
+
+def annotate_device_states(user_info: dict) -> dict:
+    for device in user_info.get("devices", []):
+        device["state"] = device_states.get(device["id"], "unknown")
+    return user_info
+
 
 def build_snapshot(user_info: dict) -> tuple[dict[StateKey, Any], dict[str, str]]:
     snapshot: dict[StateKey, Any] = {}
@@ -141,6 +161,9 @@ async def poll_tick() -> None:
         engine_status["last_error"] = str(e)
         await manager.broadcast({"type": "status", **engine_status})
         return
+
+    await refresh_device_states([d["id"] for d in user_info.get("devices", [])])
+    annotate_device_states(user_info)
 
     db = SessionLocal()
     try:

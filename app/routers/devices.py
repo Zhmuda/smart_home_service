@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.scenario_engine import annotate_device_states
 from app.yandex_client import client
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -24,7 +25,8 @@ class ActionsRequest(BaseModel):
 
 @router.get("")
 async def list_devices():
-    return await client.get_user_info()
+    user_info = await client.get_user_info()
+    return annotate_device_states(user_info)
 
 
 @router.get("/{device_id}")

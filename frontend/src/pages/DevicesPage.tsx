@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { sendAction } from '../api'
+import { getDeviceStateLabel } from '../capabilityLabels'
 import ValueEditor from '../components/ValueEditor'
+import { Badge } from '../components/ui/badge'
 import { Card, CardContent } from '../components/ui/card'
 import { useLive } from '../contexts/LiveContext'
 import type { Device, UserInfo } from '../types'
@@ -26,7 +28,12 @@ function DeviceCard({
     <Card className="transition-shadow hover:shadow-md">
       <CardContent className="flex flex-col gap-3 p-4">
         <Link to={`/devices/${device.id}`} className="group">
-          <div className="font-medium group-hover:text-primary group-hover:underline">{device.name}</div>
+          <div className="flex items-center gap-2">
+            <div className="font-medium group-hover:text-primary group-hover:underline">{device.name}</div>
+            {device.state && device.state !== 'online' && (
+              <Badge variant="destructive">{getDeviceStateLabel(device.state)}</Badge>
+            )}
+          </div>
           <div className="text-xs text-muted-foreground">{device.type.replace('devices.types.', '')}</div>
         </Link>
         {onOff ? (
