@@ -4,3 +4,5 @@ httpx==0.28.1
 pydantic-settings==2.7.1
 sqlalchemy==2.0.36
 apscheduler==3.10.4
+astral==3.2
+tzdata==2025.2

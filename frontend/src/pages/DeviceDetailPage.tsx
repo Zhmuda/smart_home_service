@@ -124,6 +124,7 @@ export default function DeviceDetailPage() {
                 <div className="mb-3 text-sm text-muted-foreground">
                   {s.trigger.kind === 'manual' && 'Запуск вручную'}
                   {s.trigger.kind === 'schedule' && `По расписанию: ${s.trigger.cron}`}
+                  {s.trigger.kind === 'sun' && `По ${s.trigger.event === 'sunset' ? 'закату' : 'восходу'}`}
                   {s.trigger.kind === 'device_state' &&
                     `${getStateLabel(s.trigger.capability_type, s.trigger.instance)} ${getOperatorLabel(s.trigger.operator)} ${String(s.trigger.value)}`}
                 </div>

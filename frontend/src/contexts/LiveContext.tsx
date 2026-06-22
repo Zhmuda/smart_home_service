@@ -29,12 +29,15 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false
     let reconnectTimer: ReturnType<typeof setTimeout>
+    let lastMessageAt = Date.now()
 
     function connect() {
       const socket = new WebSocket(wsUrl())
       socketRef.current = socket
+      lastMessageAt = Date.now()
 
       socket.onmessage = (event) => {
+        lastMessageAt = Date.now()
         const msg = JSON.parse(event.data)
         if (msg.type === 'snapshot') setDevices(msg.data)
         else if (msg.type === 'status') setStatus({ ok: msg.ok, last_poll_at: msg.last_poll_at, last_error: msg.last_error })
@@ -43,13 +46,27 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       socket.onclose = () => {
         if (!cancelled) reconnectTimer = setTimeout(connect, 3000)
       }
+
+      // Some proxies/browsers fire onerror without ever following up with onclose,
+      // which would otherwise leave the dead socket lingering forever with no reconnect.
+      socket.onerror = () => socket.close()
     }
 
     connect()
 
+    // Safety net for the rare case a dead connection never fires close/error at all
+    // (e.g. a half-open TCP connection behind a proxy) — force a reconnect if no
+    // message has arrived for much longer than the ~30s poll interval.
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastMessageAt > 90000) {
+        socketRef.current?.close()
+      }
+    }, 15000)
+
     return () => {
       cancelled = true
       clearTimeout(reconnectTimer)
+      clearInterval(watchdog)
       socketRef.current?.close()
     }
   }, [])

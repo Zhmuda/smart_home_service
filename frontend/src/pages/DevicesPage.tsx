@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { sendAction } from '../api'
@@ -6,7 +7,19 @@ import ValueEditor from '../components/ValueEditor'
 import { Badge } from '../components/ui/badge'
 import { Card, CardContent } from '../components/ui/card'
 import { useLive } from '../contexts/LiveContext'
+import { cn } from '../lib/utils'
 import type { Device, UserInfo } from '../types'
+
+const COLLAPSED_ROOMS_KEY = 'devicesPage.collapsedRooms'
+
+function loadCollapsedRooms(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_ROOMS_KEY)
+    return new Set(raw ? JSON.parse(raw) : [])
+  } catch {
+    return new Set()
+  }
+}
 
 const ON_OFF = 'devices.capabilities.on_off'
 
@@ -50,12 +63,23 @@ export default function DevicesPage() {
   const { devices: liveData } = useLive()
   const [override, setOverride] = useState<UserInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [collapsedRooms, setCollapsedRooms] = useState<Set<string>>(loadCollapsedRooms)
 
   const data = override ?? liveData
 
   useEffect(() => {
     setOverride(null)
   }, [liveData])
+
+  function toggleRoom(roomId: string) {
+    setCollapsedRooms((prev) => {
+      const next = new Set(prev)
+      if (next.has(roomId)) next.delete(roomId)
+      else next.add(roomId)
+      localStorage.setItem(COLLAPSED_ROOMS_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }
 
   async function handleToggle(device: Device, next: boolean) {
     if (!data) return
@@ -91,18 +115,31 @@ export default function DevicesPage() {
         <h1 className="text-2xl font-bold tracking-tight">Устройства</h1>
         <p className="text-sm text-muted-foreground">Текущее состояние и быстрое управление по комнатам.</p>
       </div>
-      {data.rooms.map((room) => (
-        <section key={room.id} className="mb-8">
-          <h2 className="mb-3 text-base font-semibold">{room.name}</h2>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-            {room.devices.map((deviceId) => {
-              const device = devicesById.get(deviceId)
-              if (!device) return null
-              return <DeviceCard key={device.id} device={device} onToggle={handleToggle} />
-            })}
-          </div>
-        </section>
-      ))}
+      {data.rooms.map((room) => {
+        const collapsed = collapsedRooms.has(room.id)
+        return (
+          <section key={room.id} className="mb-8">
+            <button
+              type="button"
+              onClick={() => toggleRoom(room.id)}
+              className="mb-3 flex items-center gap-2 text-base font-semibold"
+            >
+              <ChevronDown className={cn('h-4 w-4 transition-transform', collapsed && '-rotate-90')} />
+              {room.name}
+              <span className="text-sm font-normal text-muted-foreground">({room.devices.length})</span>
+            </button>
+            {!collapsed && (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+                {room.devices.map((deviceId) => {
+                  const device = devicesById.get(deviceId)
+                  if (!device) return null
+                  return <DeviceCard key={device.id} device={device} onToggle={handleToggle} />
+                })}
+              </div>
+            )}
+          </section>
+        )
+      })}
     </div>
   )
 }

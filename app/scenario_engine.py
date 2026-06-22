@@ -1,12 +1,15 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import SessionLocal
 from app.models import DeviceStateEvent, Scenario, ScenarioRun
 from app.ws import manager
@@ -241,14 +244,65 @@ def _build_cron_trigger(cron: str) -> CronTrigger:
     return CronTrigger(minute=minute, hour=hour, day=day, month=month, day_of_week=_convert_crontab_dow(dow))
 
 
-async def _run_schedule_scenario(scenario_id: int) -> None:
+async def _run_schedule_scenario(scenario_id: int, trigger_kind: str = "schedule") -> None:
     db = SessionLocal()
     try:
         scenario = db.get(Scenario, scenario_id)
         if scenario and scenario.enabled:
-            await run_scenario(db, scenario, "schedule")
+            await run_scenario(db, scenario, trigger_kind)
     finally:
         db.close()
+
+
+def _sun_job_id(scenario_id: int) -> str:
+    return f"sun:{scenario_id}"
+
+
+def _sun_times_today(for_date) -> dict[str, datetime]:
+    from astral import LocationInfo
+    from astral.sun import sun
+
+    observer = LocationInfo(latitude=settings.home_latitude, longitude=settings.home_longitude).observer
+    return sun(observer, date=for_date, tzinfo=ZoneInfo(settings.timezone))
+
+
+def sync_sun_jobs(db: Session) -> None:
+    for job in scheduler.get_jobs():
+        if job.id.startswith("sun:"):
+            scheduler.remove_job(job.id)
+
+    scenarios = db.query(Scenario).filter(Scenario.enabled.is_(True)).all()
+    sun_scenarios = [s for s in scenarios if s.trigger.get("kind") == "sun"]
+    if not sun_scenarios:
+        return
+
+    if settings.home_latitude is None or settings.home_longitude is None:
+        for scenario in sun_scenarios:
+            print(
+                f"[scenario_engine] Сценарий '{scenario.name}' использует триггер по закату/восходу, "
+                "но HOME_LATITUDE/HOME_LONGITUDE не заданы в .env — триггер не сработает."
+            )
+        return
+
+    tz = ZoneInfo(settings.timezone)
+    now_local = datetime.now(tz)
+    times = _sun_times_today(now_local.date())
+
+    for scenario in sun_scenarios:
+        trig = scenario.trigger
+        base = times.get(trig["event"])
+        if base is None:
+            continue
+        run_at = base + timedelta(minutes=trig.get("offset_minutes", 0))
+        if run_at < now_local:
+            continue
+        scheduler.add_job(
+            _run_schedule_scenario,
+            DateTrigger(run_date=run_at),
+            id=_sun_job_id(scenario.id),
+            args=[scenario.id, "sun"],
+            replace_existing=True,
+        )
 
 
 def sync_schedule_jobs(db: Session) -> None:
@@ -269,6 +323,16 @@ def sync_schedule_jobs(db: Session) -> None:
             replace_existing=True,
         )
 
+    sync_sun_jobs(db)
+
+
+async def _recompute_sun_jobs() -> None:
+    db = SessionLocal()
+    try:
+        sync_sun_jobs(db)
+    finally:
+        db.close()
+
 
 def start_engine() -> None:
     db = SessionLocal()
@@ -277,6 +341,12 @@ def start_engine() -> None:
     finally:
         db.close()
     scheduler.add_job(poll_tick, IntervalTrigger(seconds=POLL_INTERVAL_SECONDS), id="poller", replace_existing=True)
+    scheduler.add_job(
+        _recompute_sun_jobs,
+        CronTrigger(hour=0, minute=5, timezone=ZoneInfo(settings.timezone)),
+        id="sun-recompute",
+        replace_existing=True,
+    )
     scheduler.start()
 
 

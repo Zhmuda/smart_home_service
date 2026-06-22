@@ -2,11 +2,13 @@ import { cn } from '../lib/utils'
 import type { Device, Trigger } from '../types'
 import RuleEditor from './RuleEditor'
 import ScheduleEditor from './ScheduleEditor'
+import SunTriggerEditor from './SunTriggerEditor'
 
 const KINDS: { value: Trigger['kind']; icon: string; label: string; hint: string }[] = [
   { value: 'manual', icon: '👆', label: 'Вручную', hint: 'Запускаете кнопкой, когда нужно' },
   { value: 'schedule', icon: '⏰', label: 'По времени', hint: 'В заданное время и дни недели' },
   { value: 'device_state', icon: '📡', label: 'По датчику', hint: 'Когда устройство изменит состояние' },
+  { value: 'sun', icon: '🌅', label: 'Закат/восход', hint: 'По астрономическому времени' },
 ]
 
 export default function TriggerEditor({
@@ -21,12 +23,13 @@ export default function TriggerEditor({
   function setKind(kind: Trigger['kind']) {
     if (kind === 'manual') onChange({ kind: 'manual' })
     else if (kind === 'schedule') onChange({ kind: 'schedule', cron: '0 22 * * *' })
+    else if (kind === 'sun') onChange({ kind: 'sun', event: 'sunset', offset_minutes: 0 })
     else onChange({ kind: 'device_state', device_id: '', capability_type: '', instance: '', operator: 'eq', value: true })
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         {KINDS.map((k) => (
           <button
             key={k.value}
@@ -51,6 +54,8 @@ export default function TriggerEditor({
       {trigger.kind === 'device_state' && (
         <RuleEditor devices={devices} rule={trigger} onChange={(rule) => onChange({ kind: 'device_state', ...rule })} />
       )}
+
+      {trigger.kind === 'sun' && <SunTriggerEditor trigger={trigger} onChange={onChange} />}
     </div>
   )
 }

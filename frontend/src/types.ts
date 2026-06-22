@@ -64,7 +64,13 @@ export interface ManualTrigger {
   kind: 'manual'
 }
 
-export type Trigger = ScheduleTrigger | DeviceStateTrigger | ManualTrigger
+export interface SunTrigger {
+  kind: 'sun'
+  event: 'sunrise' | 'sunset'
+  offset_minutes: number
+}
+
+export type Trigger = ScheduleTrigger | DeviceStateTrigger | ManualTrigger | SunTrigger
 
 export interface ActionItem {
   device_id: string

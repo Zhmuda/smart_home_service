@@ -15,6 +15,12 @@ const TRIGGER_ICON: Record<Trigger['kind'], string> = {
   manual: '👆',
   schedule: '⏰',
   device_state: '📡',
+  sun: '🌅',
+}
+
+const SUN_EVENT_LABEL: Record<'sunrise' | 'sunset', string> = {
+  sunrise: 'восход',
+  sunset: 'закат',
 }
 
 const STATUS_VARIANT: Record<string, 'default' | 'destructive' | 'secondary'> = {
@@ -31,6 +37,10 @@ function formatValue(value: unknown): string {
 function summarizeTrigger(t: Trigger, devices: Device[]): string {
   if (t.kind === 'manual') return 'Запуск вручную'
   if (t.kind === 'schedule') return `По расписанию: ${t.cron}`
+  if (t.kind === 'sun') {
+    const sign = t.offset_minutes === 0 ? '' : t.offset_minutes > 0 ? ` +${t.offset_minutes} мин` : ` ${t.offset_minutes} мин`
+    return `${SUN_EVENT_LABEL[t.event]}${sign}`
+  }
   const device = devices.find((d) => d.id === t.device_id)
   return `${device?.name ?? '?'} — ${getStateLabel(t.capability_type, t.instance)} ${getOperatorLabel(t.operator)} ${formatValue(t.value)}`
 }

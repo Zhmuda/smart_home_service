@@ -37,8 +37,14 @@ class ManualTrigger(BaseModel):
     kind: Literal["manual"] = "manual"
 
 
+class SunTrigger(BaseModel):
+    kind: Literal["sun"] = "sun"
+    event: Literal["sunrise", "sunset"]
+    offset_minutes: int = 0
+
+
 Trigger = Annotated[
-    Union[ScheduleTrigger, DeviceStateTrigger, ManualTrigger],
+    Union[ScheduleTrigger, DeviceStateTrigger, ManualTrigger, SunTrigger],
     Field(discriminator="kind"),
 ]
 
