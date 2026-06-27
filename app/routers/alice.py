@@ -397,7 +397,8 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
     session_id = session.get("session_id", "")
     command = (request.get("command") or "").strip().lower()
 
-    if any(word in command for word in EXIT_WORDS):
+    command_words = set(command.split())
+    if any(word in command_words for word in EXIT_WORDS):
         _session_state.pop(session_id, None)
         return {
             "response": _reply("До встречи!", end_session=True),
