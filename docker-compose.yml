@@ -21,5 +21,15 @@ services:
     depends_on:
       - backend
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --protocol http2 --url http://backend:8000
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   frontend_node_modules:

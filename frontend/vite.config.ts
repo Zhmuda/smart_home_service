@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: true,
+    allowedHosts: ['alicesmarthomeassist.duckdns.org'],
     port: 5173,
     watch: {
       usePolling: true,

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal, engine
 from app.models import Scenario
-from app.routers import devices, scenarios, stats
+from app.routers import alice, devices, scenarios, stats
 from app.scenario_engine import engine_status, start_engine, stop_engine
 from app.ws import manager
 
@@ -38,6 +38,7 @@ app = FastAPI(title="Smart Home Service", lifespan=lifespan)
 app.include_router(devices.router)
 app.include_router(scenarios.router)
 app.include_router(stats.router)
+app.include_router(alice.router)
 
 
 @app.get("/health")
