@@ -7,6 +7,7 @@ import { ProfileProvider } from './contexts/ProfileContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import AliceHelpPage from './pages/AliceHelpPage'
 import CalendarPage from './pages/CalendarPage'
+import KnowledgePage from './pages/KnowledgePage'
 import DeviceDetailPage from './pages/DeviceDetailPage'
 import DevicesPage from './pages/DevicesPage'
 import ExpensesPage from './pages/ExpensesPage'
@@ -37,6 +38,7 @@ function App() {
                   <Route path="/expenses" element={<ExpensesPage />} />
                   <Route path="/savings" element={<SavingsPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/knowledge" element={<KnowledgePage />} />
                   <Route path="/alice" element={<AliceHelpPage />} />
                 </Routes>
               </main>

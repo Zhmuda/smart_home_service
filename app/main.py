@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal, engine
 from app.models import Scenario
-from app.routers import alice, calendar, devices, expenses, reminders, savings, scenarios, shopping, stats
+from app.routers import alice, calendar, devices, expenses, knowledge, reminders, savings, scenarios, shopping, stats
 from app.scenario_engine import engine_status, start_engine, stop_engine
 from app.ws import manager
 
@@ -21,6 +21,7 @@ def _migrate_add_owner(db: Session) -> None:
         "ALTER TABLE saving_goals ADD COLUMN owner TEXT NOT NULL DEFAULT 'Общее'",
         "ALTER TABLE savings ADD COLUMN goal_id INTEGER REFERENCES saving_goals(id) ON DELETE SET NULL",
         "ALTER TABLE reminders ADD COLUMN repeat TEXT",
+        "ALTER TABLE knowledge ADD COLUMN updated_at DATETIME",
     ):
         try:
             db.execute(text(stmt))
@@ -63,6 +64,7 @@ app.include_router(shopping.router)
 app.include_router(expenses.router)
 app.include_router(savings.router)
 app.include_router(calendar.router)
+app.include_router(knowledge.router)
 app.include_router(alice.router)
 
 

@@ -93,6 +93,18 @@ class Saving(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class KnowledgeEntry(Base):
+    __tablename__ = "knowledge"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String, nullable=False)
+    content = Column(String, nullable=False)
+    category = Column(String, nullable=False, default="Разное")
+    tags = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class CalendarEvent(Base):
     __tablename__ = "calendar_events"
 

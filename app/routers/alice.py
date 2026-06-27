@@ -7,7 +7,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import CalendarEvent, Expense, Reminder, Saving, SavingGoal, Scenario, ScenarioRun, ShoppingItem
+from app.models import CalendarEvent, Expense, KnowledgeEntry, Reminder, Saving, SavingGoal, Scenario, ScenarioRun, ShoppingItem
 from app.scenario_engine import _last_snapshot, device_states, run_scenario
 from app.yandex_client import client
 
@@ -22,6 +22,7 @@ GREETING = (
     "«Положи [сумма] в копилку» — накопления. "
     "«Запланируй дело» — добавить в семейный календарь. "
     "«Что на [дату]» — события на день. "
+    "«Что знаешь о WiFi» — база знаний дома. "
     "Для выхода — «стоп»."
 )
 FALLBACK = (
@@ -433,6 +434,29 @@ async def _handle_command(command: str, db: Session) -> str:
             return f"В копилке «{goal.name}»: {total} рублей."
         total = db.query(func.sum(Saving.amount)).scalar() or 0
         return f"В копилке {total} рублей."
+
+    # --- База знаний ---
+    _knowledge_triggers = (
+        "что знаешь о", "расскажи о", "где ", "какой размер", "какой номер",
+        "телефон ", "пароль ", "размер ", "аллерги", "группа крови",
+    )
+    if any(t in command for t in _knowledge_triggers):
+        entries = db.query(KnowledgeEntry).all()
+        # Extract query keyword
+        kw = command
+        for prefix in ("что знаешь о", "расскажи о", "какой размер у", "телефон", "пароль от", "пароль", "размер"):
+            if prefix in kw:
+                kw = kw[kw.index(prefix) + len(prefix):].strip()
+                break
+        kw = kw.strip()
+        if kw:
+            hits = [e for e in entries if kw[:4] in e.title.lower() or kw[:4] in e.content.lower()]
+            if not hits and len(kw) > 5:
+                hits = [e for e in entries if kw[:6] in e.title.lower() or kw[:6] in e.content.lower()]
+            if hits:
+                e = hits[0]
+                return f"{e.title}: {e.content[:300]}."
+        return "Ничего не нашла в базе знаний по этому запросу."
 
     if "на что копим" in command or "цель копилки" in command:
         goals = db.query(SavingGoal).order_by(SavingGoal.id).all()

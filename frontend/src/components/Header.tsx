@@ -1,4 +1,4 @@
-import { BarChart3, Bell, CalendarDays, Home, Menu, Mic, Moon, PiggyBank, ShoppingCart, Sun, TrendingUp, Workflow, X } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, CalendarDays, Home, Menu, Mic, Moon, PiggyBank, ShoppingCart, Sun, TrendingUp, Workflow, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { avatarColor, useProfile } from '../contexts/ProfileContext'
@@ -16,6 +16,7 @@ const NAV = [
   { to: '/expenses', label: 'Расходы', icon: TrendingUp, end: false },
   { to: '/savings', label: 'Копилка', icon: PiggyBank, end: false },
   { to: '/calendar', label: 'Календарь', icon: CalendarDays, end: false },
+  { to: '/knowledge', label: 'База знаний', icon: BookOpen, end: false },
   { to: '/alice', label: 'Алиса', icon: Mic, end: false },
 ]
 
