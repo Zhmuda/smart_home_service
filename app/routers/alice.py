@@ -12,18 +12,17 @@ from app.yandex_client import client
 
 router = APIRouter(prefix="/alice", tags=["alice"])
 
-ON_OFF = "devices.capabilities.on_off"
 GREETING = (
     "Привет! Вот что я умею. "
     "Сводка: «как дома» — температура, влажность, статус устройств и последний сценарий. "
     "Климат: «какая температура» или «какая влажность». "
-    "Устройства: «включи» или «выключи» плюс название, «какие устройства офлайн». "
+    "Офлайн: «какие устройства офлайн». "
     "Сценарии: «запусти сценарий» плюс название, «когда последний раз сработал сценарий». "
-    "Напоминания: «напомни» — создать, «измени напоминание» — изменить название или перенести время. "
+    "Напоминания: «напомни» — создать, «измени напоминание» — изменить. "
     "Для выхода скажите «стоп»."
 )
 FALLBACK = (
-    "Не поняла команду. Попробуйте: «как дома», «какая температура», «включи …», "
+    "Не поняла команду. Попробуйте: «как дома», «какая температура», «какие устройства офлайн», "
     "«запусти сценарий …», «напомни», «измени напоминание»."
 )
 EXIT_WORDS = ("выход", "хватит", "стоп", "пока")
@@ -187,15 +186,6 @@ async def _handle_command(command: str, db: Session) -> str:
         scenario = db.get(Scenario, last.scenario_id)
         name = scenario.name if scenario else f"#{last.scenario_id}"
         return f"Последний сценарий «{name}», статус: {last.status}."
-
-    if "включи" in command or "выключи" in command:
-        user_info = await client.get_user_info()
-        device = _find_device_by_name(user_info.get("devices", []), command)
-        if not device:
-            return "Не нашла такое устройство."
-        value = "включи" in command
-        await client.send_actions(device["id"], [{"type": ON_OFF, "state": {"instance": "on", "value": value}}])
-        return f"{'Включила' if value else 'Выключила'} «{device['name']}»."
 
     if any(w in command for w in ("напомни", "напоминание", "напомнить")) and not any(w in command for w in ("измени", "изменить", "редактируй")):
         return "__START_REMINDER__"
