@@ -1,5 +1,4 @@
-import { Bell, Home, MessageCircle, Mic, Moon, PiggyBank, Sun, Thermometer, TrendingUp, Users, Wifi, Workflow } from 'lucide-react'
-import { useTheme } from '../contexts/ThemeContext'
+import { Bell, Home, MessageCircle, Mic, PiggyBank, Thermometer, TrendingUp, Users, Wifi, Workflow } from 'lucide-react'
 
 interface Command {
   phrase: string
@@ -118,28 +117,17 @@ const SECTIONS: Section[] = [
 ]
 
 export default function AliceHelpPage() {
-  const { theme, toggle } = useTheme()
-
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto">
       {/* Заголовок */}
-      <div className="mb-8 flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 shadow-sm">
-            <Mic className="h-5 w-5 text-blue-500" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">Навык Алисы</h1>
-            <p className="text-sm text-muted-foreground">Все голосовые команды</p>
-          </div>
+      <div className="mb-8 flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 shadow-sm">
+          <Mic className="h-5 w-5 text-blue-500" />
         </div>
-        <button
-          onClick={toggle}
-          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground"
-          title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-        >
-          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </button>
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Навык Алисы</h1>
+          <p className="text-sm text-muted-foreground">Все голосовые команды</p>
+        </div>
       </div>
 
       {/* Инструкция активации */}
