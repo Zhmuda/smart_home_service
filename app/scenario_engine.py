@@ -241,7 +241,11 @@ def _convert_crontab_dow(field: str) -> str:
 
 def _build_cron_trigger(cron: str) -> CronTrigger:
     minute, hour, day, month, dow = cron.split()
-    return CronTrigger(minute=minute, hour=hour, day=day, month=month, day_of_week=_convert_crontab_dow(dow))
+    return CronTrigger(
+        minute=minute, hour=hour, day=day, month=month,
+        day_of_week=_convert_crontab_dow(dow),
+        timezone=ZoneInfo(settings.timezone),
+    )
 
 
 async def _run_schedule_scenario(scenario_id: int, trigger_kind: str = "schedule") -> None:

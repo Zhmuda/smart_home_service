@@ -222,9 +222,7 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
             text = "Не поняла время. Скажите, например: «через 30 минут» или «через час»."
         else:
             subject = state["subject"]
-            from zoneinfo import ZoneInfo
             remind_at = datetime.utcnow() + delta
-            moscow_time = remind_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Europe/Moscow"))
             db.add(Reminder(subject=subject, remind_at=remind_at))
             db.commit()
             _session_state.pop(session_id, None)
@@ -233,7 +231,7 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
                 when = f"через {minutes} минут"
             else:
                 when = f"через {minutes // 60} ч." if not minutes % 60 else f"через {minutes // 60} ч. {minutes % 60} мин."
-            text = f"Напоминание установлено. Напомню о «{subject}» {when} — в {moscow_time.strftime('%H:%M')} по московскому времени."
+            text = f"Напоминание установлено. Напомню о «{subject}» {when}."
 
     elif session.get("new") and not command:
         text = GREETING

@@ -1,5 +1,6 @@
 import { Bell, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { formatMoscow, moscowInputToUtc, nowMoscowInput } from '../utils/time'
 
 interface Reminder {
   id: number
@@ -27,17 +28,12 @@ async function deleteReminder(id: number): Promise<void> {
   await fetch(`/api/reminders/${id}`, { method: 'DELETE' })
 }
 
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
+const formatDateTime = formatMoscow
 
 export default function RemindersPage() {
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [subject, setSubject] = useState('')
-  const [remindAt, setRemindAt] = useState('')
+  const [remindAt, setRemindAt] = useState(nowMoscowInput)
   const [loading, setLoading] = useState(true)
 
   const load = () => fetchReminders().then(setReminders).finally(() => setLoading(false))
@@ -47,7 +43,7 @@ export default function RemindersPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!subject.trim() || !remindAt) return
-    await createReminder(subject.trim(), new Date(remindAt).toISOString())
+    await createReminder(subject.trim(), moscowInputToUtc(remindAt))
     setSubject('')
     setRemindAt('')
     load()
