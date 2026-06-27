@@ -1,4 +1,4 @@
-import { Bell, Check, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Bell, Check, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { formatMoscow, moscowInputToUtc, nowMoscowInput, utcToMoscowInput } from '../utils/time'
 
@@ -7,7 +7,23 @@ interface Reminder {
   subject: string
   remind_at: string
   sent: boolean
+  repeat: string | null
   created_at: string
+}
+
+const REPEAT_OPTIONS = [
+  { value: '', label: 'Не повторять' },
+  { value: 'daily', label: 'Ежедневно' },
+  { value: 'weekly', label: 'Еженедельно' },
+  { value: 'monthly', label: 'Ежемесячно' },
+  { value: 'yearly', label: 'Ежегодно' },
+]
+
+const REPEAT_RU: Record<string, string> = {
+  daily: 'ежедневно',
+  weekly: 'еженедельно',
+  monthly: 'ежемесячно',
+  yearly: 'ежегодно',
 }
 
 async function fetchReminders(): Promise<Reminder[]> {
@@ -16,19 +32,19 @@ async function fetchReminders(): Promise<Reminder[]> {
   return res.json()
 }
 
-async function createReminder(subject: string, remind_at: string): Promise<void> {
+async function createReminder(subject: string, remind_at: string, repeat: string | null): Promise<void> {
   await fetch('/api/reminders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subject, remind_at }),
+    body: JSON.stringify({ subject, remind_at, repeat: repeat || null }),
   })
 }
 
-async function updateReminder(id: number, subject: string, remind_at: string): Promise<void> {
+async function updateReminder(id: number, subject: string, remind_at: string, repeat: string | null): Promise<void> {
   await fetch(`/api/reminders/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subject, remind_at }),
+    body: JSON.stringify({ subject, remind_at, repeat: repeat || null }),
   })
 }
 
@@ -45,23 +61,25 @@ function ReminderCard({
 }: {
   reminder: Reminder
   onDelete: (id: number) => void
-  onSave: (id: number, subject: string, remindAt: string) => Promise<void>
+  onSave: (id: number, subject: string, remindAt: string, repeat: string | null) => Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
   const [subject, setSubject] = useState(reminder.subject)
   const [remindAt, setRemindAt] = useState(() => utcToMoscowInput(reminder.remind_at))
+  const [repeat, setRepeat] = useState<string>(reminder.repeat ?? '')
   const [saving, setSaving] = useState(false)
 
   const handleEdit = () => {
     setSubject(reminder.subject)
     setRemindAt(utcToMoscowInput(reminder.remind_at))
+    setRepeat(reminder.repeat ?? '')
     setEditing(true)
   }
 
   const handleSave = async () => {
     if (!subject.trim() || !remindAt) return
     setSaving(true)
-    await onSave(reminder.id, subject.trim(), moscowInputToUtc(remindAt))
+    await onSave(reminder.id, subject.trim(), moscowInputToUtc(remindAt), repeat || null)
     setSaving(false)
     setEditing(false)
   }
@@ -69,6 +87,7 @@ function ReminderCard({
   const handleCancel = () => {
     setSubject(reminder.subject)
     setRemindAt(utcToMoscowInput(reminder.remind_at))
+    setRepeat(reminder.repeat ?? '')
     setEditing(false)
   }
 
@@ -84,12 +103,23 @@ function ReminderCard({
             className={`${INPUT_CLS} w-full`}
             autoFocus
           />
-          <input
-            type="datetime-local"
-            value={remindAt}
-            onChange={e => setRemindAt(e.target.value)}
-            className={INPUT_CLS}
-          />
+          <div className="flex gap-2 flex-wrap">
+            <input
+              type="datetime-local"
+              value={remindAt}
+              onChange={e => setRemindAt(e.target.value)}
+              className={INPUT_CLS}
+            />
+            <select
+              value={repeat}
+              onChange={e => setRepeat(e.target.value)}
+              className={INPUT_CLS}
+            >
+              {REPEAT_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex gap-2 pt-1">
             <button
               onClick={handleSave}
@@ -118,7 +148,15 @@ function ReminderCard({
         <div className={`text-sm font-medium text-foreground ${reminder.sent ? 'line-through' : ''}`}>
           {reminder.subject}
         </div>
-        <div className="text-xs text-muted-foreground">{formatMoscow(reminder.remind_at)}</div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-xs text-muted-foreground">{formatMoscow(reminder.remind_at)}</span>
+          {reminder.repeat && (
+            <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <RefreshCw className="h-2.5 w-2.5" />
+              {REPEAT_RU[reminder.repeat] ?? reminder.repeat}
+            </span>
+          )}
+        </div>
       </div>
       <div className="ml-3 flex shrink-0 items-center gap-1">
         {!reminder.sent && (
@@ -146,6 +184,7 @@ export default function RemindersPage() {
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [subject, setSubject] = useState('')
   const [remindAt, setRemindAt] = useState(nowMoscowInput)
+  const [repeat, setRepeat] = useState('')
   const [loading, setLoading] = useState(true)
 
   const load = () => fetchReminders().then(setReminders).finally(() => setLoading(false))
@@ -155,9 +194,10 @@ export default function RemindersPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!subject.trim() || !remindAt) return
-    await createReminder(subject.trim(), moscowInputToUtc(remindAt))
+    await createReminder(subject.trim(), moscowInputToUtc(remindAt), repeat || null)
     setSubject('')
     setRemindAt(nowMoscowInput())
+    setRepeat('')
     load()
   }
 
@@ -166,8 +206,8 @@ export default function RemindersPage() {
     setReminders(r => r.filter(x => x.id !== id))
   }
 
-  const handleSave = async (id: number, subject: string, remindAt: string) => {
-    await updateReminder(id, subject, remindAt)
+  const handleSave = async (id: number, subject: string, remindAt: string, repeat: string | null) => {
+    await updateReminder(id, subject, remindAt, repeat)
     load()
   }
 
@@ -188,30 +228,41 @@ export default function RemindersPage() {
 
       <form onSubmit={handleCreate} className="mb-6 rounded-2xl border border-border bg-card p-4 shadow-sm">
         <div className="mb-3 text-sm font-medium text-foreground">Новое напоминание</div>
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-col gap-3">
           <input
             type="text"
             placeholder="О чём напомнить?"
             value={subject}
             onChange={e => setSubject(e.target.value)}
-            className={`${INPUT_CLS} flex-1`}
+            className={`${INPUT_CLS} w-full`}
           />
-          <input
-            type="datetime-local"
-            value={remindAt}
-            onChange={e => setRemindAt(e.target.value)}
-            className={INPUT_CLS}
-          />
-          <button
-            type="submit"
-            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            Добавить
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              type="datetime-local"
+              value={remindAt}
+              onChange={e => setRemindAt(e.target.value)}
+              className={INPUT_CLS}
+            />
+            <select
+              value={repeat}
+              onChange={e => setRepeat(e.target.value)}
+              className={INPUT_CLS}
+            >
+              {REPEAT_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить
+            </button>
+          </div>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Голосом: «Алиса, напомни» → «купить молоко» → «через 30 минут» · Редактировать: «измени напоминание»
+          Голосом: «Алиса, напомни» → «оплатить ЖКХ» → «через 5 минут» → «ежемесячно»
         </p>
       </form>
 

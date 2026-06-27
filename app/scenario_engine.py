@@ -347,6 +347,26 @@ async def _send_telegram(text: str) -> None:
         await c.post(url, json={"chat_id": settings.telegram_chat_id, "text": text}, timeout=10)
 
 
+def _next_remind_at(remind_at: datetime, repeat: str) -> datetime:
+    import calendar
+    if repeat == "daily":
+        from datetime import timedelta
+        return remind_at + timedelta(days=1)
+    if repeat == "weekly":
+        from datetime import timedelta
+        return remind_at + timedelta(weeks=1)
+    if repeat == "monthly":
+        month = remind_at.month % 12 + 1
+        year = remind_at.year + (1 if remind_at.month == 12 else 0)
+        day = min(remind_at.day, calendar.monthrange(year, month)[1])
+        return remind_at.replace(year=year, month=month, day=day)
+    if repeat == "yearly":
+        year = remind_at.year + 1
+        day = min(remind_at.day, calendar.monthrange(year, remind_at.month)[1])
+        return remind_at.replace(year=year, day=day)
+    return remind_at
+
+
 async def _check_reminders() -> None:
     from app.models import Reminder
     now = datetime.utcnow()
@@ -354,9 +374,13 @@ async def _check_reminders() -> None:
     try:
         due = db.query(Reminder).filter(Reminder.sent.is_(False), Reminder.remind_at <= now).all()
         for reminder in due:
-            reminder.sent = True
             await _send_telegram(f"⏰ Напоминание: {reminder.subject}")
             await manager.broadcast({"type": "reminder", "id": reminder.id, "subject": reminder.subject})
+            if reminder.repeat:
+                reminder.remind_at = _next_remind_at(reminder.remind_at, reminder.repeat)
+                reminder.sent = False
+            else:
+                reminder.sent = True
         if due:
             db.commit()
     finally:

@@ -20,6 +20,7 @@ def _migrate_add_owner(db: Session) -> None:
     for stmt in (
         "ALTER TABLE saving_goals ADD COLUMN owner TEXT NOT NULL DEFAULT 'Общее'",
         "ALTER TABLE savings ADD COLUMN goal_id INTEGER REFERENCES saving_goals(id) ON DELETE SET NULL",
+        "ALTER TABLE reminders ADD COLUMN repeat TEXT",
     ):
         try:
             db.execute(text(stmt))

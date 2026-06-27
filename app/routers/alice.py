@@ -120,6 +120,19 @@ EXIT_WORDS = ("выход", "хватит", "стоп", "пока")
 _session_state: dict[str, dict] = {}
 
 
+def _parse_repeat(text: str) -> str | None:
+    t = text.lower()
+    if any(w in t for w in ("каждый день", "ежедневно", "каждые сутки")):
+        return "daily"
+    if any(w in t for w in ("каждую неделю", "еженедельно", "раз в неделю")):
+        return "weekly"
+    if any(w in t for w in ("каждый месяц", "ежемесячно", "раз в месяц")):
+        return "monthly"
+    if any(w in t for w in ("каждый год", "ежегодно", "раз в год")):
+        return "yearly"
+    return None
+
+
 def _parse_duration(text: str) -> timedelta | None:
     patterns = [
         (r'(\d+)\s*минут', lambda m: timedelta(minutes=int(m.group(1)))),
@@ -469,18 +482,33 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
         if not delta:
             text = "Не поняла время. Скажите, например: «через 30 минут» или «через час»."
         else:
+            repeat = _parse_repeat(command)
             subject = state["subject"]
             remind_at = datetime.utcnow() + delta
-            db.add(Reminder(subject=subject, remind_at=remind_at))
-            db.commit()
-            _session_state.pop(session_id, None)
+            _session_state[session_id] = {
+                "step": "awaiting_repeat",
+                "subject": subject,
+                "remind_at": remind_at.isoformat(),
+                "repeat": repeat,
+            }
             minutes = int(delta.total_seconds() // 60)
             when = (
                 f"через {minutes} минут" if minutes < 60
                 else f"через {minutes // 60} ч." if not minutes % 60
                 else f"через {minutes // 60} ч. {minutes % 60} мин."
             )
-            text = f"Напоминание установлено. Напомню о «{subject}» {when}."
+            text = f"Хорошо, {when}. Повторять напоминание? Скажите «ежедневно», «еженедельно», «ежемесячно», «ежегодно» или «нет»."
+
+    elif state and state["step"] == "awaiting_repeat":
+        repeat = _parse_repeat(command) if command not in ("нет", "не надо", "без повтора", "разово") else None
+        subject = state["subject"]
+        remind_at = datetime.fromisoformat(state["remind_at"])
+        db.add(Reminder(subject=subject, remind_at=remind_at, repeat=repeat))
+        db.commit()
+        _session_state.pop(session_id, None)
+        _REPEAT_RU = {"daily": "ежедневно", "weekly": "еженедельно", "monthly": "ежемесячно", "yearly": "ежегодно"}
+        repeat_str = f", повторение: {_REPEAT_RU[repeat]}" if repeat else ""
+        text = f"Напоминание «{subject}» установлено{repeat_str}."
 
     # --- Редактирование напоминания ---
     elif state and state["step"] == "edit_awaiting_which":

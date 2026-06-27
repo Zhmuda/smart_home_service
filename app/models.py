@@ -48,6 +48,7 @@ class Reminder(Base):
     subject = Column(String, nullable=False)
     remind_at = Column(DateTime, nullable=False, index=True)
     sent = Column(Boolean, default=False, nullable=False)
+    repeat = Column(String, nullable=True)  # daily | weekly | monthly | yearly | None
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
