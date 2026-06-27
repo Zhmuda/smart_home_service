@@ -1,4 +1,4 @@
-import { BarChart2, Bell, Home, MessageCircle, Mic, PiggyBank, ShoppingCart, Thermometer, TrendingUp, Users, Wifi } from 'lucide-react'
+import { BarChart2, Bell, Home, MessageCircle, Mic, PiggyBank, ShoppingCart, TrendingUp, Wifi } from 'lucide-react'
 
 interface Command { phrase: string; description: string }
 interface Section {
@@ -18,18 +18,8 @@ const SECTIONS: Section[] = [
     bg: 'bg-blue-500/10',
     commands: [
       { phrase: 'Как дома?', description: 'Температура, влажность, статус устройств и последний сценарий одним ответом' },
-      { phrase: 'Сводка', description: 'То же самое, короткая форма' },
+      { phrase: 'Сводка', description: 'Короткая форма' },
       { phrase: 'Что происходит дома?', description: 'Полный доклад о состоянии дома' },
-    ],
-  },
-  {
-    icon: Thermometer,
-    title: 'Климат',
-    color: 'text-orange-500',
-    bg: 'bg-orange-500/10',
-    commands: [
-      { phrase: 'Какая температура?', description: 'Показания датчика температуры' },
-      { phrase: 'Какая влажность?', description: 'Показания датчика влажности' },
     ],
   },
   {
@@ -39,16 +29,16 @@ const SECTIONS: Section[] = [
     bg: 'bg-emerald-500/10',
     commands: [
       { phrase: 'Какие устройства офлайн?', description: 'Список устройств, которые сейчас недоступны' },
-      { phrase: 'Какие устройства не работают?', description: 'Альтернативная фраза для того же запроса' },
+      { phrase: 'Какие устройства не работают?', description: 'Альтернативная фраза' },
     ],
   },
   {
     icon: BarChart2,
-    title: 'Сценарии автоматизации',
+    title: 'Сценарии',
     color: 'text-purple-500',
     bg: 'bg-purple-500/10',
     commands: [
-      { phrase: 'Запусти сценарий [название]', description: 'Запустить нужный сценарий вручную голосом' },
+      { phrase: 'Запусти сценарий [название]', description: 'Запустить сценарий вручную голосом' },
       { phrase: 'Когда последний раз сработал сценарий?', description: 'Название и статус последнего запуска' },
     ],
   },
@@ -58,10 +48,9 @@ const SECTIONS: Section[] = [
     color: 'text-yellow-500',
     bg: 'bg-yellow-500/10',
     commands: [
-      { phrase: 'Напомни', description: 'Запустить диалог: Алиса спросит о чём и через сколько' },
+      { phrase: 'Напомни', description: 'Диалог: Алиса спросит о чём и через сколько' },
       { phrase: '→ [тема] → через 30 минут', description: 'Двухшаговый диалог — тема, потом время' },
       { phrase: 'Измени напоминание', description: 'Выбрать активное напоминание и изменить название или время' },
-      { phrase: 'Перенеси напоминание', description: 'Альтернативная фраза для изменения времени' },
     ],
   },
   {
@@ -69,11 +58,10 @@ const SECTIONS: Section[] = [
     title: 'Список покупок',
     color: 'text-amber-500',
     bg: 'bg-amber-500/10',
-    soon: true,
     commands: [
       { phrase: 'Добавь молоко в список', description: 'Добавить товар в список покупок' },
-      { phrase: 'Что нужно купить?', description: 'Зачитать текущий список' },
-      { phrase: 'Купил молоко', description: 'Убрать купленный товар из списка' },
+      { phrase: 'Что нужно купить?', description: 'Алиса зачитает список' },
+      { phrase: 'Купил молоко', description: 'Отметить товар как купленный' },
     ],
   },
   {
@@ -81,35 +69,21 @@ const SECTIONS: Section[] = [
     title: 'Учёт расходов',
     color: 'text-pink-500',
     bg: 'bg-pink-500/10',
-    soon: true,
     commands: [
       { phrase: 'Записи 500 рублей на продукты', description: 'Добавить расход по категории' },
       { phrase: 'Сколько потратили в этом месяце?', description: 'Итог расходов за текущий месяц' },
-      { phrase: 'Сколько на еду?', description: 'Расходы по конкретной категории' },
-    ],
-  },
-  {
-    icon: Users,
-    title: 'Кто дома',
-    color: 'text-cyan-500',
-    bg: 'bg-cyan-500/10',
-    soon: true,
-    commands: [
-      { phrase: 'Я пришёл', description: 'Активировать домашний режим (запускает сценарии прихода)' },
-      { phrase: 'Я ухожу', description: 'Активировать режим отсутствия' },
-      { phrase: 'Кто сейчас дома?', description: 'Показать статус присутствия жителей' },
+      { phrase: 'Сколько на продукты?', description: 'Расходы по конкретной категории' },
     ],
   },
   {
     icon: PiggyBank,
-    title: 'Семейная копилка',
+    title: 'Копилка',
     color: 'text-rose-500',
     bg: 'bg-rose-500/10',
-    soon: true,
     commands: [
       { phrase: 'Положи 200 рублей в копилку', description: 'Добавить сумму в накопления' },
       { phrase: 'Сколько в копилке?', description: 'Текущая сумма и прогресс к цели' },
-      { phrase: 'На что копим?', description: 'Название цели накопления' },
+      { phrase: 'На что копим?', description: 'Название цели и остаток' },
     ],
   },
 ]
@@ -117,7 +91,6 @@ const SECTIONS: Section[] = [
 export default function AliceHelpPage() {
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto">
-      {/* Заголовок */}
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 shadow-sm">
           <Mic className="h-5 w-5 text-blue-500" />
@@ -128,7 +101,6 @@ export default function AliceHelpPage() {
         </div>
       </div>
 
-      {/* Инструкция */}
       <div className="mb-6 rounded-2xl border border-border bg-card p-4 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
@@ -138,13 +110,11 @@ export default function AliceHelpPage() {
             Скажите{' '}
             <span className="font-medium text-foreground">«Алиса, запусти [название навыка]»</span>
             {' '}— затем используйте команды ниже. Для выхода скажите{' '}
-            <span className="font-medium text-foreground">«стоп»</span>{' '}или{' '}
-            <span className="font-medium text-foreground">«выход»</span>.
+            <span className="font-medium text-foreground">«стоп»</span>.
           </div>
         </div>
       </div>
 
-      {/* Секции команд */}
       <div className="grid gap-3">
         {SECTIONS.map((section) => (
           <div

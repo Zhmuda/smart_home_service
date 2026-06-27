@@ -6,8 +6,11 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import AliceHelpPage from './pages/AliceHelpPage'
 import DeviceDetailPage from './pages/DeviceDetailPage'
 import DevicesPage from './pages/DevicesPage'
+import ExpensesPage from './pages/ExpensesPage'
 import RemindersPage from './pages/RemindersPage'
+import SavingsPage from './pages/SavingsPage'
 import ScenariosPage from './pages/ScenariosPage'
+import ShoppingPage from './pages/ShoppingPage'
 import StatsPage from './pages/StatsPage'
 
 function App() {
@@ -25,6 +28,9 @@ function App() {
                 <Route path="/scenarios" element={<ScenariosPage />} />
                 <Route path="/stats" element={<StatsPage />} />
                 <Route path="/reminders" element={<RemindersPage />} />
+                <Route path="/shopping" element={<ShoppingPage />} />
+                <Route path="/expenses" element={<ExpensesPage />} />
+                <Route path="/savings" element={<SavingsPage />} />
                 <Route path="/alice" element={<AliceHelpPage />} />
               </Routes>
             </main>

@@ -49,3 +49,39 @@ class Reminder(Base):
     remind_at = Column(DateTime, nullable=False, index=True)
     sent = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ShoppingItem(Base):
+    __tablename__ = "shopping_items"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    bought = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Expense(Base):
+    __tablename__ = "expenses"
+
+    id = Column(Integer, primary_key=True)
+    amount = Column(Integer, nullable=False)
+    category = Column(String, nullable=False)
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class Saving(Base):
+    __tablename__ = "savings"
+
+    id = Column(Integer, primary_key=True)
+    amount = Column(Integer, nullable=False)
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class SavingGoal(Base):
+    __tablename__ = "saving_goals"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, default="Копилка")
+    target = Column(Integer, nullable=True)

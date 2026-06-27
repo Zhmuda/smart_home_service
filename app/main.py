@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal, engine
 from app.models import Scenario
-from app.routers import alice, devices, reminders, scenarios, stats
+from app.routers import alice, devices, expenses, reminders, savings, scenarios, shopping, stats
 from app.scenario_engine import engine_status, start_engine, stop_engine
 from app.ws import manager
 
@@ -39,6 +39,9 @@ app.include_router(devices.router)
 app.include_router(scenarios.router)
 app.include_router(stats.router)
 app.include_router(reminders.router)
+app.include_router(shopping.router)
+app.include_router(expenses.router)
+app.include_router(savings.router)
 app.include_router(alice.router)
 
 

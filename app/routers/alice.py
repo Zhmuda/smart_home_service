@@ -3,10 +3,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Reminder, Scenario, ScenarioRun
+from app.models import Reminder, Saving, SavingGoal, Scenario, ScenarioRun, ShoppingItem, Expense
 from app.scenario_engine import _last_snapshot, device_states, run_scenario
 from app.yandex_client import client
 
@@ -14,20 +15,19 @@ router = APIRouter(prefix="/alice", tags=["alice"])
 
 GREETING = (
     "Привет! Вот что я умею. "
-    "Сводка: «как дома» — температура, влажность, статус устройств и последний сценарий. "
-    "Климат: «какая температура» или «какая влажность». "
-    "Офлайн: «какие устройства офлайн». "
-    "Сценарии: «запусти сценарий» плюс название, «когда последний раз сработал сценарий». "
-    "Напоминания: «напомни» — создать, «измени напоминание» — изменить. "
-    "Для выхода скажите «стоп»."
+    "«Как дома» — сводка по дому. "
+    "«Напомни» — создать напоминание, «измени напоминание» — изменить. "
+    "«Добавь [товар] в список» — список покупок, «что нужно купить» — зачитать список. "
+    "«Записи [сумма] рублей на [категория]» — расходы, «сколько потратили» — итог за месяц. "
+    "«Положи [сумма] рублей в копилку», «сколько в копилке» — накопления. "
+    "Для выхода — «стоп»."
 )
 FALLBACK = (
-    "Не поняла команду. Попробуйте: «как дома», «какая температура», «какие устройства офлайн», "
-    "«запусти сценарий …», «напомни», «измени напоминание»."
+    "Не поняла команду. Попробуйте: «как дома», «напомни», «добавь в список», "
+    "«записи расход», «сколько потратили», «положи в копилку», «сколько в копилке»."
 )
 EXIT_WORDS = ("выход", "хватит", "стоп", "пока")
 
-# Состояние диалога: session_id -> {"step": str, "subject": str}
 _session_state: dict[str, dict] = {}
 
 
@@ -47,35 +47,22 @@ def _parse_duration(text: str) -> timedelta | None:
     return None
 
 
+def _parse_amount(text: str) -> int | None:
+    m = re.search(r'(\d+)', text)
+    return int(m.group(1)) if m else None
+
+
 def _reply(text: str, end_session: bool = False) -> dict[str, Any]:
     return {"text": text, "tts": text, "end_session": end_session}
 
 
-def _find_property(devices: list[dict], instance: str) -> tuple[dict, float] | None:
-    for device in devices:
-        for prop in device.get("properties", []):
-            state = prop.get("state")
-            if state and state.get("instance") == instance:
-                return device, state.get("value")
-    return None
-
-
 def _stem(word: str) -> str:
-    # Crude fix for Russian noun case endings ("лампочка" vs "лампочку") —
-    # drop the last 1-2 letters so simple substring matching survives declension.
     return word[:-2] if len(word) > 5 else word[:-1] if len(word) > 3 else word
 
 
 def _name_matches(name: str, command: str) -> bool:
     words = [w for w in name.lower().split() if len(w) > 2]
     return bool(words) and all(_stem(w) in command for w in words)
-
-
-def _find_device_by_name(devices: list[dict], command: str) -> dict | None:
-    for device in devices:
-        if _name_matches(device.get("name") or "", command):
-            return device
-    return None
 
 
 def _find_scenario_by_name(scenarios: list[Scenario], command: str) -> Scenario | None:
@@ -142,25 +129,31 @@ async def _home_summary(db: Session) -> str:
     return ". ".join(parts).capitalize() + "."
 
 
+def _shopping_list_reply(db: Session) -> str:
+    pending = db.query(ShoppingItem).filter(ShoppingItem.bought.is_(False)).all()
+    if not pending:
+        return "Список покупок пуст."
+    names = ", ".join(item.name for item in pending)
+    return f"Нужно купить: {names}."
+
+
+def _monthly_expense_total(db: Session, category: str | None = None) -> str:
+    now = datetime.now(timezone.utc)
+    q = db.query(func.sum(Expense.amount)).filter(
+        extract("year", Expense.created_at) == now.year,
+        extract("month", Expense.created_at) == now.month,
+    )
+    if category:
+        q = q.filter(Expense.category.ilike(f"%{category}%"))
+    total = q.scalar() or 0
+    if category:
+        return f"На «{category}» в этом месяце потрачено {total} рублей."
+    return f"В этом месяце потрачено {total} рублей."
+
+
 async def _handle_command(command: str, db: Session) -> str:
     if any(w in command for w in ("как дома", "что дома", "сводка", "что происходит", "доклад")):
         return await _home_summary(db)
-
-    if "температур" in command:
-        user_info = await client.get_user_info()
-        found = _find_property(user_info.get("devices", []), "temperature")
-        if not found:
-            return "Не нашла датчик температуры."
-        device, value = found
-        return f"{device['name']}: {value} градусов."
-
-    if "влажност" in command:
-        user_info = await client.get_user_info()
-        found = _find_property(user_info.get("devices", []), "humidity")
-        if not found:
-            return "Не нашла датчик влажности."
-        device, value = found
-        return f"{device['name']}: влажность {value} процентов."
 
     if "офлайн" in command or "не работа" in command or "доступн" in command:
         offline = [name for name, state in device_states.items() if state != "online"]
@@ -192,6 +185,78 @@ async def _handle_command(command: str, db: Session) -> str:
 
     if any(w in command for w in ("измени", "изменить", "редактируй", "перенеси", "переименуй")):
         return "__START_EDIT__"
+
+    # --- Список покупок ---
+    if "добавь" in command and "список" in command:
+        m = re.search(r'добавь\s+(.+?)\s+в\s+список', command)
+        item_name = m.group(1).strip() if m else None
+        if not item_name:
+            return "Не поняла, что добавить. Скажите: «добавь молоко в список»."
+        db.add(ShoppingItem(name=item_name))
+        db.commit()
+        return f"Добавила «{item_name}» в список покупок."
+
+    if any(w in command for w in ("что нужно купить", "что купить", "список покупок", "что в списке")):
+        return _shopping_list_reply(db)
+
+    if command.startswith("купил") or command.startswith("купила"):
+        m = re.search(r'купил[а]?\s+(.+)', command)
+        item_name = m.group(1).strip() if m else None
+        if item_name:
+            items = db.query(ShoppingItem).filter(ShoppingItem.bought.is_(False)).all()
+            match = next((i for i in items if _stem(item_name[:5]) in i.name.lower()), None)
+            if match:
+                match.bought = True
+                db.commit()
+                return f"Отметила «{match.name}» как купленное."
+        return "Не нашла такой товар в списке."
+
+    # --- Расходы ---
+    if any(w in command for w in ("записи", "потратил", "расход")) and re.search(r'\d+', command):
+        amount = _parse_amount(command)
+        if not amount:
+            return "Не поняла сумму. Скажите: «записи 500 рублей на продукты»."
+        cat_m = re.search(r'на\s+(\w+)', command)
+        category = cat_m.group(1) if cat_m else "прочее"
+        db.add(Expense(amount=amount, category=category))
+        db.commit()
+        return f"Записала {amount} рублей на «{category}»."
+
+    if "сколько потратили" in command or "расход за месяц" in command or "итог за месяц" in command:
+        return _monthly_expense_total(db)
+
+    if re.match(r'сколько на ', command):
+        cat_m = re.search(r'сколько на\s+(\w+)', command)
+        if cat_m:
+            return _monthly_expense_total(db, cat_m.group(1))
+
+    # --- Копилка ---
+    if ("положи" in command or "добавь" in command) and "копилк" in command:
+        amount = _parse_amount(command)
+        if not amount:
+            return "Не поняла сумму. Скажите: «положи 500 рублей в копилку»."
+        db.add(Saving(amount=amount))
+        db.commit()
+        total = db.query(func.sum(Saving.amount)).scalar() or 0
+        return f"Добавила {amount} рублей. Итого в копилке: {total} рублей."
+
+    if "сколько в копилке" in command or "копилк" in command:
+        total = db.query(func.sum(Saving.amount)).scalar() or 0
+        goal = db.query(SavingGoal).first()
+        if goal and goal.target:
+            pct = int(total / goal.target * 100)
+            return f"В копилке {total} рублей из {goal.target} — {pct}% от цели «{goal.name}»."
+        return f"В копилке {total} рублей."
+
+    if "на что копим" in command or "цель копилки" in command:
+        goal = db.query(SavingGoal).first()
+        if not goal:
+            return "Цель копилки не задана."
+        total = db.query(func.sum(Saving.amount)).scalar() or 0
+        if goal.target:
+            left = max(0, goal.target - total)
+            return f"Копим на «{goal.name}». Нужно {goal.target} рублей, осталось {left}."
+        return f"Копим на «{goal.name}»."
 
     return FALLBACK
 
@@ -232,7 +297,11 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
             db.commit()
             _session_state.pop(session_id, None)
             minutes = int(delta.total_seconds() // 60)
-            when = f"через {minutes} минут" if minutes < 60 else (f"через {minutes // 60} ч." if not minutes % 60 else f"через {minutes // 60} ч. {minutes % 60} мин.")
+            when = (
+                f"через {minutes} минут" if minutes < 60
+                else f"через {minutes // 60} ч." if not minutes % 60
+                else f"через {minutes // 60} ч. {minutes % 60} мин."
+            )
             text = f"Напоминание установлено. Напомню о «{subject}» {when}."
 
     # --- Редактирование напоминания ---
@@ -250,7 +319,7 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
         if "название" in command or "назв" in command or "имя" in command:
             _session_state[session_id] = {**state, "step": "edit_awaiting_name"}
             text = "Как переименовать напоминание?"
-        elif any(w in command for w in ("время", "перенести", "перенеси", "перенести")):
+        elif any(w in command for w in ("время", "перенести", "перенеси")):
             _session_state[session_id] = {**state, "step": "edit_awaiting_newtime"}
             text = "На какое время перенести? Например: «через час» или «через 2 часа»."
         else:
@@ -261,8 +330,8 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
             text = "Не расслышала. Как переименовать?"
         else:
             reminder = db.get(Reminder, state["reminder_id"])
+            old = state["subject"]
             if reminder:
-                old = reminder.subject
                 reminder.subject = command
                 db.commit()
             _session_state.pop(session_id, None)

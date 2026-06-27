@@ -1,4 +1,4 @@
-import { BarChart3, Bell, Home, Menu, Mic, Moon, Sun, Workflow, X } from 'lucide-react'
+import { BarChart3, Bell, Home, Menu, Mic, Moon, PiggyBank, ShoppingCart, Sun, TrendingUp, Workflow, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useLive } from '../contexts/LiveContext'
@@ -11,7 +11,10 @@ const NAV = [
   { to: '/scenarios', label: 'Сценарии', icon: Workflow, end: false },
   { to: '/stats', label: 'Статистика', icon: BarChart3, end: false },
   { to: '/reminders', label: 'Напоминания', icon: Bell, end: false },
-  { to: '/alice', label: 'Навык Алисы', icon: Mic, end: false },
+  { to: '/shopping', label: 'Покупки', icon: ShoppingCart, end: false },
+  { to: '/expenses', label: 'Расходы', icon: TrendingUp, end: false },
+  { to: '/savings', label: 'Копилка', icon: PiggyBank, end: false },
+  { to: '/alice', label: 'Алиса', icon: Mic, end: false },
 ]
 
 function ConnectionDot() {
