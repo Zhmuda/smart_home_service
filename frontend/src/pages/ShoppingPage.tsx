@@ -5,7 +5,7 @@ import { cn } from '../lib/utils'
 
 interface Item { id: number; name: string; bought: boolean; owner: string }
 
-type Filter = 'mine' | 'common' | 'all'
+type Filter = 'mine' | 'common'
 
 const API = '/api/shopping'
 
@@ -13,7 +13,6 @@ export default function ShoppingPage() {
   const { currentUser } = useProfile()
   const [items, setItems] = useState<Item[]>([])
   const [input, setInput] = useState('')
-  const [isCommon, setIsCommon] = useState(false)
   const [filter, setFilter] = useState<Filter>('mine')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -27,7 +26,7 @@ export default function ShoppingPage() {
   async function addItem() {
     const name = input.trim()
     if (!name) return
-    const owner = isCommon ? 'Общее' : (currentUser ?? 'Общее')
+    const owner = filter === 'common' ? 'Общее' : (currentUser ?? 'Общее')
     await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -53,13 +52,10 @@ export default function ShoppingPage() {
     load()
   }
 
-  function applyFilter(list: Item[]) {
-    if (filter === 'mine') return list.filter(i => i.owner === currentUser || i.owner === 'Общее')
-    if (filter === 'common') return list.filter(i => i.owner === 'Общее')
-    return list
-  }
+  const filtered = filter === 'mine'
+    ? items.filter(i => i.owner === currentUser || i.owner === 'Общее')
+    : items.filter(i => i.owner === 'Общее')
 
-  const filtered = applyFilter(items)
   const pending = filtered.filter(i => !i.bought)
   const bought = filtered.filter(i => i.bought)
 
@@ -77,7 +73,7 @@ export default function ShoppingPage() {
 
       {/* Фильтр */}
       <div className="mb-4 flex gap-1 rounded-2xl bg-muted p-1">
-        {([['mine', 'Мои'], ['common', 'Общее'], ['all', 'Все']] as [Filter, string][]).map(([key, label]) => (
+        {([['mine', 'Мои'], ['common', 'Общее']] as [Filter, string][]).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
@@ -92,35 +88,21 @@ export default function ShoppingPage() {
       </div>
 
       {/* Добавление */}
-      <div className="mb-6 flex flex-col gap-2">
-        <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addItem()}
-            placeholder="Добавить товар…"
-            className="flex-1 rounded-2xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-amber-500/30"
-          />
-          <button
-            onClick={addItem}
-            disabled={!input.trim()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
+      <div className="mb-6 flex gap-2">
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addItem()}
+          placeholder={filter === 'common' ? 'Добавить в общий список…' : 'Добавить себе…'}
+          className="flex-1 rounded-2xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-amber-500/30"
+        />
         <button
-          onClick={() => setIsCommon(v => !v)}
-          className={cn(
-            'flex items-center gap-2 self-start rounded-xl px-3 py-1.5 text-sm transition',
-            isCommon
-              ? 'bg-amber-500/15 text-amber-600 font-medium'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
+          onClick={addItem}
+          disabled={!input.trim()}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
         >
-          <Users className="h-3.5 w-3.5" />
-          {isCommon ? 'Общее' : 'Личное'}
+          <Plus className="h-4 w-4" />
         </button>
       </div>
 

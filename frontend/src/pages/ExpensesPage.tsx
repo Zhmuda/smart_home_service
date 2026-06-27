@@ -9,7 +9,7 @@ interface Expense { id: number; amount: number; category: string; note?: string;
 interface CategorySummary { category: string; total: number }
 interface MonthSummary { month: string; total: number }
 
-type Filter = 'mine' | 'common' | 'all'
+type Filter = 'mine' | 'common'
 
 const CATEGORIES = ['продукты', 'кафе', 'транспорт', 'здоровье', 'развлечения', 'одежда', 'прочее']
 const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#6b7280']
@@ -39,7 +39,6 @@ export default function ExpensesPage() {
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0])
   const [note, setNote] = useState('')
-  const [isCommon, setIsCommon] = useState(false)
   const [filter, setFilter] = useState<Filter>('mine')
 
   async function load() {
@@ -58,7 +57,7 @@ export default function ExpensesPage() {
   async function addExpense() {
     const amt = parseInt(amount)
     if (!amt || amt <= 0) return
-    const owner = isCommon ? 'Общее' : (currentUser ?? 'Общее')
+    const owner = filter === 'common' ? 'Общее' : (currentUser ?? 'Общее')
     await fetch('/api/expenses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -76,8 +75,7 @@ export default function ExpensesPage() {
 
   function applyFilter(list: Expense[]) {
     if (filter === 'mine') return list.filter(e => e.owner === currentUser || e.owner === 'Общее')
-    if (filter === 'common') return list.filter(e => e.owner === 'Общее')
-    return list
+    return list.filter(e => e.owner === 'Общее')
   }
 
   const filtered = applyFilter(expenses)
@@ -115,7 +113,7 @@ export default function ExpensesPage() {
 
       {/* Фильтр */}
       <div className="mb-4 flex gap-1 rounded-2xl bg-muted p-1">
-        {([['mine', 'Мои'], ['common', 'Общее'], ['all', 'Все']] as [Filter, string][]).map(([key, label]) => (
+        {([['mine', 'Мои'], ['common', 'Общее']] as [Filter, string][]).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
@@ -205,16 +203,6 @@ export default function ExpensesPage() {
               <Plus className="h-4 w-4" />
             </button>
           </div>
-          <button
-            onClick={() => setIsCommon(v => !v)}
-            className={cn(
-              'flex items-center gap-2 self-start rounded-xl px-3 py-1.5 text-sm transition',
-              isCommon ? 'bg-pink-500/15 text-pink-600 font-medium' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Users className="h-3.5 w-3.5" />
-            {isCommon ? 'Общий расход' : 'Личный расход'}
-          </button>
         </div>
       </div>
 
