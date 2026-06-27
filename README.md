@@ -1,51 +1,103 @@
 # Smart Home Service
 
-Личный сервис автоматизации умного дома на базе официального Yandex Smart Home (IoT) API. Управляет реальными устройствами Яндекса и заменяет/расширяет встроенные сценарии приложения Алисы: добавляет внешние триггеры, историю срабатываний и графики состояний, которых нет в официальном приложении.
+Семейный сервис умного дома на базе официального Yandex Smart Home (IoT) API. Управляет реальными устройствами Яндекса, расширяет встроенные сценарии и добавляет семейные инструменты — всё в одном веб-интерфейсе с поддержкой голосового навыка Алисы.
 
 ## Возможности
 
-- **Дашборд устройств** — текущее состояние и быстрое управление по комнатам, drill-down на каждое устройство (управление всеми параметрами, график истории, связанные сценарии).
-- **Сценарии «Если — То»**:
-  - триггеры: вручную, по расписанию (время + дни недели), по изменению состояния устройства;
-  - условия (`И при этом`) — дополнительные проверки состояния других устройств;
-  - действия — управление любыми capabilities устройств (вкл/выкл, яркость, цвет, режимы и т.д.).
-- **История и статистика** — журнал срабатываний сценариев и график изменений состояния любого устройства.
+### Умный дом
+- **Устройства** — текущее состояние по комнатам, drill-down с управлением всеми параметрами и графиком истории
+- **Сценарии «Если — То»** — триггеры (вручную / расписание / состояние устройства / восход-закат), условия И/ИЛИ, действия с задержкой
+- **Статистика** — журнал срабатываний сценариев, графики изменений состояния устройств
+- **Напоминания** — создание, редактирование, удаление; уведомления через WebSocket и Telegram
+
+### Семейные инструменты
+- **Семейный календарь** — дела с привязкой к члену семьи, дата + диапазон времени, месячный вид
+- **Список покупок** — личные и общие позиции, отметка «куплено», фильтры по участнику
+- **Учёт расходов** — категории, круговая диаграмма по месяцу, столбчатый график по месяцам
+- **Копилка** — общая или личная, цель накопления с прогресс-баром
+
+### Голосовой навык Алисы
+Все функции доступны голосом через навык Яндекс Диалогов с многошаговыми диалогами:
+- «Как дома?» — сводка по дому
+- «Напомни» — создать/изменить напоминание
+- «Запланируй дело» — добавить в семейный календарь
+- «Что на завтра?» — дела на день
+- «Добавь молоко в список», «Что нужно купить?»
+- «Записи 500 рублей на продукты», «Сколько потратили?»
+- «Положи 200 рублей в копилку», «Сколько в копилке?»
+
+### Интерфейс
+- Темная и светлая тема
+- Семейные профили (выбор «кто ты» при входе, переключение через шапку)
+- Фильтры данных: Мои / Общее / Все
+- Адаптирован под мобильные устройства
+- Real-time обновления через WebSocket
+- Уведомления-напоминания в браузере
 
 ## Архитектура
 
 ```
-React (Vite + TS + Tailwind)  →  /api proxy  →  FastAPI backend  →  api.iot.yandex.net
-                                                       │
-                                                  SQLite (сценарии, история)
-                                                       │
-                                                  APScheduler (опрос раз в 30с,
-                                                  cron-триггеры)
+React (Vite + TS + Tailwind)
+        │
+        │ /api proxy (nginx)
+        ▼
+   FastAPI backend ──────► api.iot.yandex.net (Yandex IoT API)
+        │
+        ├── SQLite (сценарии, история, напоминания,
+        │          покупки, расходы, копилка, календарь)
+        │
+        ├── APScheduler (поллинг каждые 30с,
+        │               cron-триггеры сценариев,
+        │               проверка напоминаний каждые 60с)
+        │
+        └── WebSocket (push: состояния устройств,
+                       уведомления о напоминаниях)
+
+Yandex Dialogs webhook ──► /alice/webhook (навык Алисы)
+
+nginx (HTTPS) ──► Let's Encrypt + DuckDNS
 ```
 
-Backend сам обновляет OAuth-токен (`refresh_token`) и опрашивает Yandex IoT API на изменения состояний, не дожидаясь вебхуков — у Yandex Smart Home User API их нет.
+Backend сам обновляет OAuth-токен по `refresh_token` и опрашивает Yandex IoT API — у него нет вебхуков состояний.
 
 ## Стек
 
-- **Backend**: FastAPI, SQLAlchemy + SQLite, APScheduler, httpx
-- **Frontend**: React, Vite, TypeScript, Tailwind CSS, Radix UI, Recharts
-- **Инфраструктура**: Docker / docker-compose
+| Слой | Технологии |
+|---|---|
+| Backend | FastAPI, SQLAlchemy + SQLite, APScheduler, httpx, pydantic-settings |
+| Frontend | React 19, Vite, TypeScript, Tailwind CSS v4, Recharts, Lucide |
+| Инфраструктура | Docker Compose, nginx, Let's Encrypt (certbot), GitHub Actions |
 
-## Запуск
+## Переменные окружения
 
-### 1. Зарегистрировать OAuth-приложение в Яндексе
+Файл `.env` (см. `.env.example`):
 
-1. Откройте https://oauth.yandex.ru/client/new → «Для авторизации пользователей».
-2. Платформа — «Веб-сервисы», Redirect URI: `https://oauth.yandex.ru/verification_code`.
-3. В правах доступа добавьте «Умный дом Яндекса»: просмотр и управление устройствами.
-4. Сохраните — получите `Client ID` и `Client secret`.
+| Переменная | Обязательна | Описание |
+|---|---|---|
+| `YANDEX_CLIENT_ID` | да | ID OAuth-приложения Яндекса |
+| `YANDEX_CLIENT_SECRET` | да | Secret OAuth-приложения |
+| `TIMEZONE` | нет | Таймзона (по умолчанию `Europe/Moscow`) |
+| `HOME_LATITUDE` | нет | Широта дома (для триггеров восход/закат) |
+| `HOME_LONGITUDE` | нет | Долгота дома |
+| `TELEGRAM_BOT_TOKEN` | нет | Токен бота для уведомлений о напоминаниях |
+| `TELEGRAM_CHAT_ID` | нет | ID чата для Telegram-уведомлений |
+
+## Быстрый старт (локально)
+
+### 1. OAuth-приложение Яндекса
+
+1. [oauth.yandex.ru/client/new](https://oauth.yandex.ru/client/new) → «Для авторизации пользователей»
+2. Платформа — «Веб-сервисы», Redirect URI: `https://oauth.yandex.ru/verification_code`
+3. Права: «Умный дом Яндекса» — просмотр и управление устройствами
+4. Сохраните `Client ID` и `Client secret`
 
 ### 2. Получить токены
 
 ```bash
-# Откройте в браузере под аккаунтом с привязанными устройствами:
+# Откройте в браузере под аккаунтом с устройствами:
 https://oauth.yandex.ru/authorize?response_type=code&client_id=<CLIENT_ID>
 
-# Получите код подтверждения и обменяйте на токен:
+# Обменяйте код на токен:
 curl -X POST https://oauth.yandex.ru/token \
   -d grant_type=authorization_code \
   -d code=<КОД> \
@@ -53,50 +105,148 @@ curl -X POST https://oauth.yandex.ru/token \
   -d client_secret=<CLIENT_SECRET>
 ```
 
-### 3. Настроить конфиг
+### 3. Настроить и запустить
 
 ```bash
 cp .env.example .env
 # заполните YANDEX_CLIENT_ID и YANDEX_CLIENT_SECRET
-```
 
-Создайте `data/tokens.json` (каталог `data/` уже есть в репозитории):
-
-```json
+# Создайте data/tokens.json:
+mkdir -p data
+cat > data/tokens.json <<EOF
 {
   "access_token": "...",
   "refresh_token": "...",
   "expires_at": 1781963737
 }
+EOF
+
+docker compose up -d --build
 ```
 
-`expires_at` — unix-время истечения `access_token` (`expires_in` из ответа Яндекса + текущее время). Дальше backend сам продлевает токен по `refresh_token`.
+- Фронтенд: http://localhost:5173
+- Backend / Swagger: http://localhost:8000/docs
 
-### 4. Запустить
+## Деплой на VPS с HTTPS
+
+### nginx + Let's Encrypt + DuckDNS
 
 ```bash
-docker-compose up -d --build
+# 1. Зарегистрируйте бесплатный домен на duckdns.org
+# 2. Укажите IP вашего сервера
+
+# На сервере:
+apt install nginx certbot python3-certbot-nginx
+
+# Получите сертификат:
+certbot --nginx -d your-domain.duckdns.org
+
+# Пример конфига nginx /etc/nginx/sites-available/smarthome:
 ```
 
-- Frontend: http://localhost:5173
-- Backend / Swagger: http://localhost:8000/docs
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.duckdns.org;
+
+    # Закрыть фронт паролем (семья знает пароль):
+    location / {
+        auth_basic "Smart Home";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+        proxy_pass http://localhost:5173;
+    }
+
+    # API — тоже под паролем:
+    location /api/ {
+        auth_basic "Smart Home";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+        proxy_pass http://localhost:8000/;
+    }
+
+    # WebSocket:
+    location /ws {
+        auth_basic "Smart Home";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+        proxy_pass http://localhost:8000/ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Webhook Алисы — БЕЗ пароля (Яндекс сам стучится):
+    location /alice/ {
+        proxy_pass http://localhost:8000/alice/;
+    }
+}
+```
+
+```bash
+# Создать пароль для семьи:
+htpasswd -c /etc/nginx/.htpasswd home
+```
+
+### Автодеплой через GitHub Actions
+
+Файл `.github/workflows/deploy.yml` уже есть в репозитории.
+
+Добавьте в GitHub → Settings → Secrets:
+
+| Secret | Значение |
+|---|---|
+| `SERVER_HOST` | IP вашего сервера |
+| `SERVER_USER` | `root` |
+| `SERVER_SSH_KEY` | Приватный SSH-ключ |
+
+После этого каждый `git push` в `main` автоматически деплоит на сервер.
 
 ## Структура проекта
 
 ```
-app/                    backend (FastAPI)
-  routers/               devices, scenarios, stats
-  scenario_engine.py     поллер состояний + APScheduler + выполнение сценариев
-  yandex_client.py       клиент Yandex IoT API с автообновлением токена
-  models.py / db.py      SQLAlchemy-модели, SQLite
-frontend/               React-приложение (Vite + Tailwind)
-  src/pages/              Devices / DeviceDetail / Scenarios / Stats
-  src/components/ui/      UI-примитивы (Radix + Tailwind)
-data/                   рантайм-данные (токены, SQLite) — не в git
+app/                        Backend (FastAPI)
+  routers/
+    alice.py                Навык Алисы — webhook + многошаговые диалоги
+    calendar.py             Семейный календарь
+    devices.py              Устройства Яндекс IoT
+    expenses.py             Учёт расходов
+    reminders.py            Напоминания
+    savings.py              Копилка
+    scenarios.py            Сценарии автоматизации
+    shopping.py             Список покупок
+    stats.py                История и статистика
+  models.py                 SQLAlchemy-модели (все таблицы)
+  schemas.py                Pydantic-схемы для сценариев
+  scenario_engine.py        Поллер + APScheduler + выполнение сценариев
+  yandex_client.py          HTTP-клиент Yandex IoT API с автообновлением токена
+  config.py                 Настройки через pydantic-settings
+  db.py                     SQLite engine + session
+
+frontend/src/
+  pages/                    Страницы приложения
+  components/               Shared-компоненты (Header, ProfilePicker, …)
+  contexts/                 React Contexts (Live, Profile, Theme)
+  utils/time.ts             Работа с московским временем
+
+data/                       Рантайм-данные (токены, SQLite БД) — не в git
+.github/workflows/          GitHub Actions (автодеплой)
 ```
 
-## Известные ограничения (сознательно вне scope)
+## База данных
 
-- **Голосовые триггеры** («Алиса, …») не реализованы — это требует регистрации отдельного навыка-провайдера «Умный дом» с публичным HTTPS-вебхуком (Яндекс должен достучаться снаружи), а не просто пользовательского OAuth-токена.
-- **Геолокация** («ушёл из дома») не реализована — требует отдельного мобильного приложения с фоновым определением координат.
-- **Озвучка через колонку** официальным API не поддерживается (у станций нет capabilities в Smart Home User API). Есть неофициальный способ через внутренний протокол Quasar (как в проекте AlexxIT/YandexStation), но он не подключён.
+SQLite, файл `data/app.db`. Таблицы создаются и мигрируются автоматически при старте.
+
+| Таблица | Назначение |
+|---|---|
+| `scenarios` | Сценарии автоматизации |
+| `scenario_runs` | История срабатываний |
+| `device_state_events` | История состояний устройств |
+| `reminders` | Напоминания |
+| `shopping_items` | Список покупок |
+| `expenses` | Расходы |
+| `savings` / `saving_goals` | Копилка и цель |
+| `calendar_events` | События семейного календаря |
+
+## Известные ограничения
+
+- **Алиса не может говорить по расписанию** — Яндекс Диалоги работают только в режиме запрос-ответ. Пуш-уведомления через навык невозможны публичным API. Для напоминаний используйте Telegram.
+- **Мультисессия Алисы в памяти** — состояние многошагового диалога хранится в RAM и сбрасывается при перезапуске контейнера. Для семейного использования это некритично.
+- **Озвучка через колонку** — у Яндекс Станций нет публичного API для принудительного воспроизведения. Есть неофициальный способ через протокол Quasar (проект YandexStation), но он не подключён.

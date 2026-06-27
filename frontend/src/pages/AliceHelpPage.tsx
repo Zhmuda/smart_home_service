@@ -1,4 +1,4 @@
-import { BarChart2, Bell, Home, MessageCircle, Mic, PiggyBank, ShoppingCart, TrendingUp, Wifi } from 'lucide-react'
+import { BarChart2, Bell, CalendarDays, Home, MessageCircle, Mic, PiggyBank, ShoppingCart, TrendingUp, Wifi } from 'lucide-react'
 
 interface Command { phrase: string; description: string }
 interface Section {
@@ -7,7 +7,6 @@ interface Section {
   color: string
   bg: string
   commands: Command[]
-  soon?: boolean
 }
 
 const SECTIONS: Section[] = [
@@ -48,9 +47,21 @@ const SECTIONS: Section[] = [
     color: 'text-yellow-500',
     bg: 'bg-yellow-500/10',
     commands: [
-      { phrase: 'Напомни', description: 'Диалог: Алиса спросит о чём и через сколько' },
-      { phrase: '→ [тема] → через 30 минут', description: 'Двухшаговый диалог — тема, потом время' },
+      { phrase: 'Напомни', description: 'Диалог: о чём → через сколько (например «через 30 минут»)' },
       { phrase: 'Измени напоминание', description: 'Выбрать активное напоминание и изменить название или время' },
+      { phrase: 'Перенеси напоминание', description: 'Альтернативная фраза для изменения времени' },
+    ],
+  },
+  {
+    icon: CalendarDays,
+    title: 'Семейный календарь',
+    color: 'text-violet-500',
+    bg: 'bg-violet-500/10',
+    commands: [
+      { phrase: 'Запланируй дело', description: 'Диалог: для кого → что за дело → когда (дата + время)' },
+      { phrase: '→ [имя] → [дело] → завтра в 14:00', description: 'Понимает: сегодня, завтра, послезавтра, в пятницу, 15 июля, с 10 до 12' },
+      { phrase: 'Что на завтра?', description: 'Все дела семьи на указанный день' },
+      { phrase: 'Что на пятницу?', description: 'События на конкретный день недели' },
     ],
   },
   {
@@ -60,7 +71,7 @@ const SECTIONS: Section[] = [
     bg: 'bg-amber-500/10',
     commands: [
       { phrase: 'Добавь молоко в список', description: 'Добавить товар в список покупок' },
-      { phrase: 'Что нужно купить?', description: 'Алиса зачитает список' },
+      { phrase: 'Что нужно купить?', description: 'Алиса зачитает текущий список' },
       { phrase: 'Купил молоко', description: 'Отметить товар как купленный' },
     ],
   },
@@ -83,7 +94,7 @@ const SECTIONS: Section[] = [
     commands: [
       { phrase: 'Положи 200 рублей в копилку', description: 'Добавить сумму в накопления' },
       { phrase: 'Сколько в копилке?', description: 'Текущая сумма и прогресс к цели' },
-      { phrase: 'На что копим?', description: 'Название цели и остаток' },
+      { phrase: 'На что копим?', description: 'Название цели и остаток до неё' },
     ],
   },
 ]
@@ -111,6 +122,9 @@ export default function AliceHelpPage() {
             <span className="font-medium text-foreground">«Алиса, запусти [название навыка]»</span>
             {' '}— затем используйте команды ниже. Для выхода скажите{' '}
             <span className="font-medium text-foreground">«стоп»</span>.
+            Команды со стрелкой{' '}
+            <span className="font-medium text-foreground">→</span>{' '}
+            — многошаговый диалог: Алиса задаёт вопросы по очереди.
           </div>
         </div>
       </div>
@@ -121,18 +135,11 @@ export default function AliceHelpPage() {
             key={section.title}
             className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
           >
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${section.bg}`}>
-                  <section.icon className={`h-4 w-4 ${section.color}`} />
-                </div>
-                <h2 className="font-medium text-foreground">{section.title}</h2>
+            <div className="mb-4 flex items-center gap-2.5">
+              <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${section.bg}`}>
+                <section.icon className={`h-4 w-4 ${section.color}`} />
               </div>
-              {section.soon && (
-                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                  Скоро
-                </span>
-              )}
+              <h2 className="font-medium text-foreground">{section.title}</h2>
             </div>
 
             <div className="flex flex-col gap-3">
