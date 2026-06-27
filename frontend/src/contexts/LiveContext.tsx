@@ -2,12 +2,25 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { fetchDevices, fetchStatus, type EngineStatus } from '../api'
 import type { UserInfo } from '../types'
 
+export interface ReminderNotification {
+  id: number
+  subject: string
+  receivedAt: string
+}
+
 interface LiveState {
   devices: UserInfo | null
   status: EngineStatus | null
+  notifications: ReminderNotification[]
+  clearNotifications: () => void
 }
 
-const LiveContext = createContext<LiveState>({ devices: null, status: null })
+const LiveContext = createContext<LiveState>({
+  devices: null,
+  status: null,
+  notifications: [],
+  clearNotifications: () => {},
+})
 
 export function useLive(): LiveState {
   return useContext(LiveContext)
@@ -21,7 +34,10 @@ function wsUrl(): string {
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [devices, setDevices] = useState<UserInfo | null>(null)
   const [status, setStatus] = useState<EngineStatus | null>(null)
+  const [notifications, setNotifications] = useState<ReminderNotification[]>([])
   const socketRef = useRef<WebSocket | null>(null)
+
+  const clearNotifications = () => setNotifications([])
 
   useEffect(() => {
     fetchDevices().then(setDevices).catch(() => {})
@@ -41,26 +57,21 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         const msg = JSON.parse(event.data)
         if (msg.type === 'snapshot') setDevices(msg.data)
         else if (msg.type === 'status') setStatus({ ok: msg.ok, last_poll_at: msg.last_poll_at, last_error: msg.last_error })
+        else if (msg.type === 'reminder') {
+          setNotifications(prev => [...prev, { id: msg.id, subject: msg.subject, receivedAt: new Date().toISOString() }])
+        }
       }
 
       socket.onclose = () => {
         if (!cancelled) reconnectTimer = setTimeout(connect, 3000)
       }
-
-      // Some proxies/browsers fire onerror without ever following up with onclose,
-      // which would otherwise leave the dead socket lingering forever with no reconnect.
       socket.onerror = () => socket.close()
     }
 
     connect()
 
-    // Safety net for the rare case a dead connection never fires close/error at all
-    // (e.g. a half-open TCP connection behind a proxy) — force a reconnect if no
-    // message has arrived for much longer than the ~30s poll interval.
     const watchdog = setInterval(() => {
-      if (Date.now() - lastMessageAt > 90000) {
-        socketRef.current?.close()
-      }
+      if (Date.now() - lastMessageAt > 90000) socketRef.current?.close()
     }, 15000)
 
     return () => {
@@ -71,5 +82,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  return <LiveContext.Provider value={{ devices, status }}>{children}</LiveContext.Provider>
+  return (
+    <LiveContext.Provider value={{ devices, status, notifications, clearNotifications }}>
+      {children}
+    </LiveContext.Provider>
+  )
 }

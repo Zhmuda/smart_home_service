@@ -334,6 +334,31 @@ async def _recompute_sun_jobs() -> None:
         db.close()
 
 
+async def _send_telegram(text: str) -> None:
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        return
+    import httpx
+    url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
+    async with httpx.AsyncClient() as c:
+        await c.post(url, json={"chat_id": settings.telegram_chat_id, "text": text}, timeout=10)
+
+
+async def _check_reminders() -> None:
+    from app.models import Reminder
+    now = datetime.utcnow()
+    db = SessionLocal()
+    try:
+        due = db.query(Reminder).filter(Reminder.sent.is_(False), Reminder.remind_at <= now).all()
+        for reminder in due:
+            reminder.sent = True
+            await _send_telegram(f"⏰ Напоминание: {reminder.subject}")
+            await manager.broadcast({"type": "reminder", "id": reminder.id, "subject": reminder.subject})
+        if due:
+            db.commit()
+    finally:
+        db.close()
+
+
 def start_engine() -> None:
     db = SessionLocal()
     try:
@@ -341,6 +366,7 @@ def start_engine() -> None:
     finally:
         db.close()
     scheduler.add_job(poll_tick, IntervalTrigger(seconds=POLL_INTERVAL_SECONDS), id="poller", replace_existing=True)
+    scheduler.add_job(_check_reminders, IntervalTrigger(seconds=60), id="reminders", replace_existing=True)
     scheduler.add_job(
         _recompute_sun_jobs,
         CronTrigger(hour=0, minute=5, timezone=ZoneInfo(settings.timezone)),

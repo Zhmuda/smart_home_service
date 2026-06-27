@@ -1,20 +1,40 @@
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Scenario, ScenarioRun
+from app.models import Reminder, Scenario, ScenarioRun
 from app.scenario_engine import _last_snapshot, device_states, run_scenario
 from app.yandex_client import client
 
 router = APIRouter(prefix="/alice", tags=["alice"])
 
 ON_OFF = "devices.capabilities.on_off"
-GREETING = "Привет! Спросите «как дома» для общей сводки, про температуру, влажность, какие устройства офлайн, когда последний раз сработал сценарий, либо скажите «включи …» / «выключи …» / «запусти сценарий …»."
-FALLBACK = "Не поняла вопрос. Скажите «как дома» для сводки, или спросите про температуру, влажность, устройства офлайн, сценарии — либо «включи …» / «выключи …» / «запусти сценарий …»."
+GREETING = "Привет! Спросите «как дома» для сводки, «напомни» для напоминания, про температуру, влажность, устройства офлайн, сценарии — либо «включи …» / «выключи …» / «запусти сценарий …»."
+FALLBACK = "Не поняла вопрос. Скажите «как дома» для сводки, «напомни» для напоминания, или спросите про температуру, влажность, устройства офлайн, сценарии."
 EXIT_WORDS = ("выход", "хватит", "стоп", "пока")
+
+# Состояние диалога: session_id -> {"step": str, "subject": str}
+_session_state: dict[str, dict] = {}
+
+
+def _parse_duration(text: str) -> timedelta | None:
+    patterns = [
+        (r'(\d+)\s*минут', lambda m: timedelta(minutes=int(m.group(1)))),
+        (r'(\d+)\s*час', lambda m: timedelta(hours=int(m.group(1)))),
+        (r'(\d+)\s*секунд', lambda m: timedelta(seconds=int(m.group(1)))),
+        (r'(\d+)\s*день|(\d+)\s*дня|(\d+)\s*дней', lambda m: timedelta(days=int(next(g for g in m.groups() if g)))),
+        (r'полчаса', lambda m: timedelta(minutes=30)),
+        (r'час', lambda m: timedelta(hours=1)),
+    ]
+    for pattern, fn in patterns:
+        m = re.search(pattern, text)
+        if m:
+            return fn(m)
+    return None
 
 
 def _reply(text: str, end_session: bool = False) -> dict[str, Any]:
@@ -166,6 +186,9 @@ async def _handle_command(command: str, db: Session) -> str:
         await client.send_actions(device["id"], [{"type": ON_OFF, "state": {"instance": "on", "value": value}}])
         return f"{'Включила' if value else 'Выключила'} «{device['name']}»."
 
+    if any(w in command for w in ("напомни", "напоминание", "напомнить")):
+        return "__START_REMINDER__"
+
     return FALLBACK
 
 
@@ -173,18 +196,53 @@ async def _handle_command(command: str, db: Session) -> str:
 async def alice_webhook(body: dict, db: Session = Depends(get_db)):
     request = body.get("request", {})
     session = body.get("session", {})
+    session_id = session.get("session_id", "")
     command = (request.get("command") or "").strip().lower()
 
-    if session.get("new") and not command:
-        text = GREETING
-    elif any(word in command for word in EXIT_WORDS):
+    if any(word in command for word in EXIT_WORDS):
+        _session_state.pop(session_id, None)
         return {
             "response": _reply("До встречи!", end_session=True),
             "session": session,
             "version": body.get("version", "1.0"),
         }
+
+    state = _session_state.get(session_id)
+
+    if state and state["step"] == "awaiting_subject":
+        if not command:
+            text = "Не расслышала. О чём напомнить?"
+        else:
+            _session_state[session_id] = {"step": "awaiting_time", "subject": command}
+            text = f"Хорошо, напомню о «{command}». Через сколько времени? Например: «через 30 минут» или «через 2 часа»."
+
+    elif state and state["step"] == "awaiting_time":
+        delta = _parse_duration(command)
+        if not delta:
+            text = "Не поняла время. Скажите, например: «через 30 минут» или «через час»."
+        else:
+            subject = state["subject"]
+            from zoneinfo import ZoneInfo
+            remind_at = datetime.utcnow() + delta
+            moscow_time = remind_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Europe/Moscow"))
+            db.add(Reminder(subject=subject, remind_at=remind_at))
+            db.commit()
+            _session_state.pop(session_id, None)
+            minutes = int(delta.total_seconds() // 60)
+            if minutes < 60:
+                when = f"через {minutes} минут"
+            else:
+                when = f"через {minutes // 60} ч." if not minutes % 60 else f"через {minutes // 60} ч. {minutes % 60} мин."
+            text = f"Напоминание установлено. Напомню о «{subject}» {when} — в {moscow_time.strftime('%H:%M')} по московскому времени."
+
+    elif session.get("new") and not command:
+        text = GREETING
+
     else:
         text = await _handle_command(command, db)
+        if text == "__START_REMINDER__":
+            _session_state[session_id] = {"step": "awaiting_subject"}
+            text = "О чём напомнить?"
 
     return {
         "response": _reply(text),

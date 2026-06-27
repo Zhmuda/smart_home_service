@@ -39,3 +39,13 @@ class DeviceStateEvent(Base):
     instance = Column(String, nullable=False)
     value = Column(JSON, nullable=True)
     recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class Reminder(Base):
+    __tablename__ = "reminders"
+
+    id = Column(Integer, primary_key=True)
+    subject = Column(String, nullable=False)
+    remind_at = Column(DateTime, nullable=False, index=True)
+    sent = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

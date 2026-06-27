@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     home_latitude: float | None = None
     home_longitude: float | None = None
     timezone: str = "Europe/Moscow"
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
 
     class Config:
         env_file = ".env"
