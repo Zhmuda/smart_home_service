@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import { LiveProvider } from './contexts/LiveContext'
+import AliceHelpPage from './pages/AliceHelpPage'
 import DeviceDetailPage from './pages/DeviceDetailPage'
 import DevicesPage from './pages/DevicesPage'
 import ScenariosPage from './pages/ScenariosPage'
@@ -18,6 +19,7 @@ function App() {
               <Route path="/devices/:deviceId" element={<DeviceDetailPage />} />
               <Route path="/scenarios" element={<ScenariosPage />} />
               <Route path="/stats" element={<StatsPage />} />
+              <Route path="/alice" element={<AliceHelpPage />} />
             </Routes>
           </main>
         </div>

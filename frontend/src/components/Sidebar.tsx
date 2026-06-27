@@ -1,4 +1,4 @@
-import { BarChart3, Home, Workflow } from 'lucide-react'
+import { BarChart3, Home, Mic, Workflow } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useLive } from '../contexts/LiveContext'
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/', label: 'Устройства', icon: Home, end: true },
   { to: '/scenarios', label: 'Сценарии', icon: Workflow, end: false },
   { to: '/stats', label: 'Статистика', icon: BarChart3, end: false },
+  { to: '/alice', label: 'Навык Алисы', icon: Mic, end: false },
 ]
 
 const STALE_AFTER_SECONDS = 70
