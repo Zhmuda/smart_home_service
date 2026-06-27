@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal, engine
@@ -8,6 +9,15 @@ from app.models import Scenario
 from app.routers import alice, devices, expenses, reminders, savings, scenarios, shopping, stats
 from app.scenario_engine import engine_status, start_engine, stop_engine
 from app.ws import manager
+
+
+def _migrate_add_owner(db: Session) -> None:
+    for table in ("shopping_items", "expenses", "savings"):
+        try:
+            db.execute(text(f"ALTER TABLE {table} ADD COLUMN owner TEXT NOT NULL DEFAULT 'Общее'"))
+        except Exception:
+            pass
+    db.commit()
 
 
 def _migrate_condition_groups(db: Session) -> None:
@@ -26,6 +36,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        _migrate_add_owner(db)
         _migrate_condition_groups(db)
     finally:
         db.close()

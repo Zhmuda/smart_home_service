@@ -16,6 +16,7 @@ class ExpenseCreate(BaseModel):
     amount: int
     category: str
     note: Optional[str] = None
+    owner: str = "Общее"
 
 
 class ExpenseOut(BaseModel):
@@ -23,6 +24,7 @@ class ExpenseOut(BaseModel):
     amount: int
     category: str
     note: Optional[str]
+    owner: str
     created_at: datetime
 
     class Config:
@@ -34,8 +36,13 @@ class CategorySummary(BaseModel):
     total: int
 
 
+class MonthSummary(BaseModel):
+    month: str
+    total: int
+
+
 @router.get("", response_model=list[ExpenseOut])
-def list_expenses(limit: int = 50, db: Session = Depends(get_db)):
+def list_expenses(limit: int = 100, db: Session = Depends(get_db)):
     return db.query(Expense).order_by(Expense.created_at.desc()).limit(limit).all()
 
 
@@ -55,9 +62,24 @@ def monthly_summary(db: Session = Depends(get_db)):
     return [{"category": r.category, "total": r.total} for r in rows]
 
 
+@router.get("/monthly", response_model=list[MonthSummary])
+def monthly_totals(db: Session = Depends(get_db)):
+    rows = (
+        db.query(
+            func.strftime("%Y-%m", Expense.created_at).label("month"),
+            func.sum(Expense.amount).label("total"),
+        )
+        .group_by("month")
+        .order_by("month")
+        .all()
+    )
+    # return last 6 months
+    return [{"month": r.month, "total": r.total} for r in rows[-6:]]
+
+
 @router.post("", response_model=ExpenseOut, status_code=201)
 def add_expense(body: ExpenseCreate, db: Session = Depends(get_db)):
-    expense = Expense(amount=body.amount, category=body.category.strip(), note=body.note)
+    expense = Expense(amount=body.amount, category=body.category.strip(), note=body.note, owner=body.owner)
     db.add(expense)
     db.commit()
     db.refresh(expense)

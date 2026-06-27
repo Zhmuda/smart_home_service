@@ -1,13 +1,20 @@
-import { Check, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
+import { Check, Plus, ShoppingCart, Trash2, Users, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { avatarColor, useProfile } from '../contexts/ProfileContext'
+import { cn } from '../lib/utils'
 
-interface Item { id: number; name: string; bought: boolean }
+interface Item { id: number; name: string; bought: boolean; owner: string }
+
+type Filter = 'mine' | 'common' | 'all'
 
 const API = '/api/shopping'
 
 export default function ShoppingPage() {
+  const { currentUser } = useProfile()
   const [items, setItems] = useState<Item[]>([])
   const [input, setInput] = useState('')
+  const [isCommon, setIsCommon] = useState(false)
+  const [filter, setFilter] = useState<Filter>('mine')
   const inputRef = useRef<HTMLInputElement>(null)
 
   async function load() {
@@ -20,16 +27,15 @@ export default function ShoppingPage() {
   async function addItem() {
     const name = input.trim()
     if (!name) return
-    const res = await fetch(API, {
+    const owner = isCommon ? 'Общее' : (currentUser ?? 'Общее')
+    await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, owner }),
     })
-    if (res.ok) {
-      setInput('')
-      inputRef.current?.focus()
-      load()
-    }
+    setInput('')
+    inputRef.current?.focus()
+    load()
   }
 
   async function toggleBought(id: number) {
@@ -47,8 +53,15 @@ export default function ShoppingPage() {
     load()
   }
 
-  const pending = items.filter(i => !i.bought)
-  const bought = items.filter(i => i.bought)
+  function applyFilter(list: Item[]) {
+    if (filter === 'mine') return list.filter(i => i.owner === currentUser || i.owner === 'Общее')
+    if (filter === 'common') return list.filter(i => i.owner === 'Общее')
+    return list
+  }
+
+  const filtered = applyFilter(items)
+  const pending = filtered.filter(i => !i.bought)
+  const bought = filtered.filter(i => i.bought)
 
   return (
     <div className="p-4 md:p-6 max-w-lg mx-auto">
@@ -58,33 +71,62 @@ export default function ShoppingPage() {
         </div>
         <div>
           <h1 className="text-xl font-semibold text-foreground">Список покупок</h1>
-          <p className="text-sm text-muted-foreground">{pending.length} товаров нужно купить</p>
+          <p className="text-sm text-muted-foreground">{pending.length} нужно купить</p>
         </div>
       </div>
 
+      {/* Фильтр */}
+      <div className="mb-4 flex gap-1 rounded-2xl bg-muted p-1">
+        {([['mine', 'Мои'], ['common', 'Общее'], ['all', 'Все']] as [Filter, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={cn(
+              'flex-1 rounded-xl py-1.5 text-sm font-medium transition-colors',
+              filter === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Добавление */}
-      <div className="mb-6 flex gap-2">
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && addItem()}
-          placeholder="Добавить товар…"
-          className="flex-1 rounded-2xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-amber-500/30"
-        />
+      <div className="mb-6 flex flex-col gap-2">
+        <div className="flex gap-2">
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addItem()}
+            placeholder="Добавить товар…"
+            className="flex-1 rounded-2xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-amber-500/30"
+          />
+          <button
+            onClick={addItem}
+            disabled={!input.trim()}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
         <button
-          onClick={addItem}
-          disabled={!input.trim()}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
+          onClick={() => setIsCommon(v => !v)}
+          className={cn(
+            'flex items-center gap-2 self-start rounded-xl px-3 py-1.5 text-sm transition',
+            isCommon
+              ? 'bg-amber-500/15 text-amber-600 font-medium'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
         >
-          <Plus className="h-4 w-4" />
+          <Users className="h-3.5 w-3.5" />
+          {isCommon ? 'Общее' : 'Личное'}
         </button>
       </div>
 
-      {/* Список */}
-      {items.length === 0 && (
+      {filtered.length === 0 && (
         <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
-          Список пуст — добавьте первый товар
+          Список пуст
         </div>
       )}
 
@@ -97,6 +139,10 @@ export default function ShoppingPage() {
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-amber-500 transition hover:bg-amber-500/20"
               />
               <span className="flex-1 text-sm text-foreground">{item.name}</span>
+              {item.owner === 'Общее'
+                ? <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                : <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white', avatarColor(item.owner))}>{item.owner[0].toUpperCase()}</span>
+              }
               <button onClick={() => deleteItem(item.id)} className="text-muted-foreground hover:text-red-500 transition">
                 <X className="h-4 w-4" />
               </button>
@@ -116,10 +162,7 @@ export default function ShoppingPage() {
           </div>
           {bought.map((item, i) => (
             <div key={item.id} className={`flex items-center gap-3 px-4 py-3 ${i < bought.length - 1 ? 'border-b border-border' : ''}`}>
-              <button
-                onClick={() => toggleBought(item.id)}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 transition"
-              >
+              <button onClick={() => toggleBought(item.id)} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500">
                 <Check className="h-3 w-3 text-white" />
               </button>
               <span className="flex-1 text-sm text-foreground line-through">{item.name}</span>

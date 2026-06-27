@@ -57,6 +57,7 @@ class ShoppingItem(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     bought = Column(Boolean, default=False, nullable=False)
+    owner = Column(String, nullable=False, default="Общее")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -67,6 +68,7 @@ class Expense(Base):
     amount = Column(Integer, nullable=False)
     category = Column(String, nullable=False)
     note = Column(String, nullable=True)
+    owner = Column(String, nullable=False, default="Общее")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
@@ -76,6 +78,7 @@ class Saving(Base):
     id = Column(Integer, primary_key=True)
     amount = Column(Integer, nullable=False)
     note = Column(String, nullable=True)
+    owner = Column(String, nullable=False, default="Общее")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

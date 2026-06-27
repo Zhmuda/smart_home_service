@@ -14,6 +14,7 @@ router = APIRouter(prefix="/savings", tags=["savings"])
 class SavingCreate(BaseModel):
     amount: int
     note: Optional[str] = None
+    owner: str = "Общее"
 
 
 class GoalUpdate(BaseModel):
@@ -25,6 +26,7 @@ class SavingOut(BaseModel):
     id: int
     amount: int
     note: Optional[str]
+    owner: str
     created_at: datetime
 
     class Config:
@@ -55,7 +57,7 @@ def get_overview(db: Session = Depends(get_db)):
 
 @router.post("", response_model=SavingOut, status_code=201)
 def add_saving(body: SavingCreate, db: Session = Depends(get_db)):
-    saving = Saving(amount=body.amount, note=body.note)
+    saving = Saving(amount=body.amount, note=body.note, owner=body.owner)
     db.add(saving)
     db.commit()
     db.refresh(saving)

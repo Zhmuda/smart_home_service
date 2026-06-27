@@ -1,6 +1,7 @@
 import { BarChart3, Bell, Home, Menu, Mic, Moon, PiggyBank, ShoppingCart, Sun, TrendingUp, Workflow, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { avatarColor, useProfile } from '../contexts/ProfileContext'
 import { useLive } from '../contexts/LiveContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { cn } from '../lib/utils'
@@ -32,6 +33,7 @@ function ConnectionDot() {
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { theme, toggle } = useTheme()
+  const { currentUser, openPicker } = useProfile()
 
   return (
     <>
@@ -67,6 +69,15 @@ export default function Header() {
         <div className="ml-auto flex items-center gap-2">
           <ConnectionDot />
           <NotificationBell />
+          {currentUser && (
+            <button
+              onClick={openPicker}
+              title={`Профиль: ${currentUser}`}
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white transition hover:opacity-80 ${avatarColor(currentUser)}`}
+            >
+              {currentUser[0].toUpperCase()}
+            </button>
+          )}
           <button
             onClick={toggle}
             title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}

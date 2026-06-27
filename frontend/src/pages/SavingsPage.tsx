@@ -1,15 +1,22 @@
-import { Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react'
+import { Pencil, PiggyBank, Plus, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { avatarColor, useProfile } from '../contexts/ProfileContext'
+import { cn } from '../lib/utils'
 import { formatMoscow } from '../utils/time'
 
-interface Saving { id: number; amount: number; note?: string; created_at: string }
+interface Saving { id: number; amount: number; note?: string; owner: string; created_at: string }
 interface Goal { name: string; target?: number }
 interface Overview { total: number; goal: Goal | null; items: Saving[] }
 
+type Filter = 'mine' | 'common' | 'all'
+
 export default function SavingsPage() {
+  const { currentUser } = useProfile()
   const [data, setData] = useState<Overview>({ total: 0, goal: null, items: [] })
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
+  const [isCommon, setIsCommon] = useState(false)
+  const [filter, setFilter] = useState<Filter>('all')
   const [editGoal, setEditGoal] = useState(false)
   const [goalName, setGoalName] = useState('')
   const [goalTarget, setGoalTarget] = useState('')
@@ -29,10 +36,11 @@ export default function SavingsPage() {
   async function addSaving() {
     const amt = parseInt(amount)
     if (!amt || amt <= 0) return
+    const owner = isCommon ? 'Общее' : (currentUser ?? 'Общее')
     await fetch('/api/savings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: amt, note: note.trim() || undefined }),
+      body: JSON.stringify({ amount: amt, note: note.trim() || undefined, owner }),
     })
     setAmount('')
     setNote('')
@@ -49,15 +57,20 @@ export default function SavingsPage() {
     await fetch('/api/savings/goal', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: goalName.trim(),
-        target: goalTarget ? parseInt(goalTarget) : null,
-      }),
+      body: JSON.stringify({ name: goalName.trim(), target: goalTarget ? parseInt(goalTarget) : null }),
     })
     setEditGoal(false)
     load()
   }
 
+  function applyFilter(list: Saving[]) {
+    if (filter === 'mine') return list.filter(s => s.owner === currentUser || s.owner === 'Общее')
+    if (filter === 'common') return list.filter(s => s.owner === 'Общее')
+    return list
+  }
+
+  const filtered = applyFilter(data.items)
+  const filteredTotal = filtered.reduce((s, i) => s + i.amount, 0)
   const pct = data.goal?.target ? Math.min(100, Math.round((data.total / data.goal.target) * 100)) : null
   const left = data.goal?.target ? Math.max(0, data.goal.target - data.total) : null
 
@@ -69,16 +82,19 @@ export default function SavingsPage() {
         </div>
         <div>
           <h1 className="text-xl font-semibold text-foreground">Копилка</h1>
-          <p className="text-sm text-muted-foreground">
-            {data.goal ? `${data.goal.name}` : 'Без цели'}
-          </p>
+          <p className="text-sm text-muted-foreground">{data.goal?.name ?? 'Без цели'}</p>
         </div>
       </div>
 
-      {/* Прогресс */}
+      {/* Прогресс (всегда по общей сумме) */}
       <div className="mb-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="mb-1 flex items-end justify-between">
-          <span className="text-3xl font-bold text-foreground">{data.total.toLocaleString('ru-RU')} ₽</span>
+          <div>
+            <span className="text-3xl font-bold text-foreground">{data.total.toLocaleString('ru-RU')} ₽</span>
+            {filter !== 'all' && filteredTotal !== data.total && (
+              <span className="ml-2 text-sm text-muted-foreground">(ваш вклад: {filteredTotal.toLocaleString('ru-RU')} ₽)</span>
+            )}
+          </div>
           {data.goal?.target && (
             <span className="text-sm text-muted-foreground">из {data.goal.target.toLocaleString('ru-RU')} ₽</span>
           )}
@@ -87,10 +103,7 @@ export default function SavingsPage() {
         {pct !== null && (
           <>
             <div className="my-3 h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-rose-500 transition-all"
-                style={{ width: `${pct}%` }}
-              />
+              <div className="h-full rounded-full bg-rose-500 transition-all" style={{ width: `${pct}%` }} />
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>{pct}% накоплено</span>
@@ -138,6 +151,22 @@ export default function SavingsPage() {
         )}
       </div>
 
+      {/* Фильтр */}
+      <div className="mb-4 flex gap-1 rounded-2xl bg-muted p-1">
+        {([['all', 'Все'], ['mine', 'Мои'], ['common', 'Общее']] as [Filter, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={cn(
+              'flex-1 rounded-xl py-1.5 text-sm font-medium transition-colors',
+              filter === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Форма пополнения */}
       <div className="mb-6 rounded-2xl border border-border bg-card p-4 shadow-sm">
         <p className="mb-3 text-sm font-medium text-foreground">Пополнить</p>
@@ -168,20 +197,34 @@ export default function SavingsPage() {
             placeholder="Заметка (необязательно)"
             className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-rose-500/30"
           />
+          <button
+            onClick={() => setIsCommon(v => !v)}
+            className={cn(
+              'flex items-center gap-2 self-start rounded-xl px-3 py-1.5 text-sm transition',
+              isCommon ? 'bg-rose-500/15 text-rose-600 font-medium' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Users className="h-3.5 w-3.5" />
+            {isCommon ? 'В общую копилку' : 'В личную'}
+          </button>
         </div>
       </div>
 
-      {/* История пополнений */}
+      {/* История */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
-        {data.items.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">Пополнений пока нет</div>
         ) : (
-          data.items.map((s, i) => (
-            <div key={s.id} className={`flex items-center gap-3 px-4 py-3 ${i < data.items.length - 1 ? 'border-b border-border' : ''}`}>
+          filtered.map((s, i) => (
+            <div key={s.id} className={`flex items-center gap-3 px-4 py-3 ${i < filtered.length - 1 ? 'border-b border-border' : ''}`}>
               <div className="flex-1 min-w-0">
                 {s.note && <p className="truncate text-sm text-foreground">{s.note}</p>}
                 <p className="text-xs text-muted-foreground">{formatMoscow(s.created_at)}</p>
               </div>
+              {s.owner === 'Общее'
+                ? <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                : <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white', avatarColor(s.owner))}>{s.owner[0].toUpperCase()}</span>
+              }
               <span className="shrink-0 font-medium text-rose-500">+{s.amount.toLocaleString('ru-RU')} ₽</span>
               <button onClick={() => deleteSaving(s.id)} className="text-muted-foreground hover:text-red-500 transition">
                 <Trash2 className="h-4 w-4" />
