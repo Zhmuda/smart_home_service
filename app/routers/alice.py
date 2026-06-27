@@ -186,8 +186,11 @@ async def _handle_command(command: str, db: Session) -> str:
         await client.send_actions(device["id"], [{"type": ON_OFF, "state": {"instance": "on", "value": value}}])
         return f"{'Включила' if value else 'Выключила'} «{device['name']}»."
 
-    if any(w in command for w in ("напомни", "напоминание", "напомнить")):
+    if any(w in command for w in ("напомни", "напоминание", "напомнить")) and not any(w in command for w in ("измени", "изменить", "редактируй")):
         return "__START_REMINDER__"
+
+    if any(w in command for w in ("измени", "изменить", "редактируй", "перенеси", "переименуй")):
+        return "__START_EDIT__"
 
     return FALLBACK
 
@@ -209,12 +212,13 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
 
     state = _session_state.get(session_id)
 
+    # --- Создание напоминания ---
     if state and state["step"] == "awaiting_subject":
         if not command:
             text = "Не расслышала. О чём напомнить?"
         else:
             _session_state[session_id] = {"step": "awaiting_time", "subject": command}
-            text = f"Хорошо, напомню о «{command}». Через сколько времени? Например: «через 30 минут» или «через 2 часа»."
+            text = f"Хорошо, напомню о «{command}». Через сколько? Например: «через 30 минут» или «через 2 часа»."
 
     elif state and state["step"] == "awaiting_time":
         delta = _parse_duration(command)
@@ -227,11 +231,56 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
             db.commit()
             _session_state.pop(session_id, None)
             minutes = int(delta.total_seconds() // 60)
-            if minutes < 60:
-                when = f"через {minutes} минут"
-            else:
-                when = f"через {minutes // 60} ч." if not minutes % 60 else f"через {minutes // 60} ч. {minutes % 60} мин."
+            when = f"через {minutes} минут" if minutes < 60 else (f"через {minutes // 60} ч." if not minutes % 60 else f"через {minutes // 60} ч. {minutes % 60} мин.")
             text = f"Напоминание установлено. Напомню о «{subject}» {when}."
+
+    # --- Редактирование напоминания ---
+    elif state and state["step"] == "edit_awaiting_which":
+        pending = db.query(Reminder).filter(Reminder.sent.is_(False)).all()
+        match = next((r for r in pending if _name_matches(r.subject, command)), None)
+        if not match:
+            names = ", ".join(f"«{r.subject}»" for r in pending[:3]) or "нет активных"
+            text = f"Не нашла такое напоминание. Активные: {names}. Повторите название."
+        else:
+            _session_state[session_id] = {"step": "edit_awaiting_field", "reminder_id": match.id, "subject": match.subject}
+            text = f"Нашла «{match.subject}». Что изменить: название или время?"
+
+    elif state and state["step"] == "edit_awaiting_field":
+        if "название" in command or "назв" in command or "имя" in command:
+            _session_state[session_id] = {**state, "step": "edit_awaiting_name"}
+            text = "Как переименовать напоминание?"
+        elif any(w in command for w in ("время", "перенести", "перенеси", "перенести")):
+            _session_state[session_id] = {**state, "step": "edit_awaiting_newtime"}
+            text = "На какое время перенести? Например: «через час» или «через 2 часа»."
+        else:
+            text = "Скажите «название» чтобы переименовать или «время» чтобы перенести."
+
+    elif state and state["step"] == "edit_awaiting_name":
+        if not command:
+            text = "Не расслышала. Как переименовать?"
+        else:
+            reminder = db.get(Reminder, state["reminder_id"])
+            if reminder:
+                old = reminder.subject
+                reminder.subject = command
+                db.commit()
+            _session_state.pop(session_id, None)
+            text = f"Переименовала «{old}» в «{command}»."
+
+    elif state and state["step"] == "edit_awaiting_newtime":
+        delta = _parse_duration(command)
+        if not delta:
+            text = "Не поняла время. Скажите, например: «через час» или «через 30 минут»."
+        else:
+            reminder = db.get(Reminder, state["reminder_id"])
+            if reminder:
+                reminder.remind_at = datetime.utcnow() + delta
+                reminder.sent = False
+                db.commit()
+            _session_state.pop(session_id, None)
+            minutes = int(delta.total_seconds() // 60)
+            when = f"через {minutes} минут" if minutes < 60 else f"через {minutes // 60} ч."
+            text = f"Напоминание «{state['subject']}» перенесено на {when}."
 
     elif session.get("new") and not command:
         text = GREETING
@@ -241,6 +290,14 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
         if text == "__START_REMINDER__":
             _session_state[session_id] = {"step": "awaiting_subject"}
             text = "О чём напомнить?"
+        elif text == "__START_EDIT__":
+            pending = db.query(Reminder).filter(Reminder.sent.is_(False)).all()
+            if not pending:
+                text = "Нет активных напоминаний для редактирования."
+            else:
+                _session_state[session_id] = {"step": "edit_awaiting_which"}
+                names = ", ".join(f"«{r.subject}»" for r in pending[:3])
+                text = f"Какое напоминание изменить? Активные: {names}."
 
     return {
         "response": _reply(text),

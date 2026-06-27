@@ -17,3 +17,8 @@ export function nowMoscowInput(): string {
 export function moscowInputToUtc(localStr: string): string {
   return new Date(localStr + '+03:00').toISOString()
 }
+
+// Converts UTC ISO string to Moscow time for datetime-local input value
+export function utcToMoscowInput(iso: string): string {
+  return new Date(iso).toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).replace(' ', 'T').slice(0, 16)
+}
