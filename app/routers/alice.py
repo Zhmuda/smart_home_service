@@ -316,11 +316,18 @@ async def _handle_command(command: str, db: Session) -> str:
 
         owner = "Общее"
         if owner_spoken:
-            known = [r[0] for r in db.query(ShoppingItem.owner).distinct().all() if r[0] != "Общее"]
-            owner = next(
-                (o for o in known if o.lower().startswith(owner_spoken[:3].lower())),
-                owner_spoken.capitalize(),
-            )
+            seen: set[str] = set()
+            known: list[str] = []
+            for col in (ShoppingItem.owner, Expense.owner, Saving.owner):
+                for (val,) in db.query(col).distinct().all():
+                    if val != "Общее" and val not in seen:
+                        known.append(val)
+                        seen.add(val)
+            matched = next((o for o in known if o.lower().startswith(owner_spoken[:3].lower())), None)
+            if not matched:
+                hint = f"В системе: {', '.join(known)}." if known else "Пока никто не добавлял записи."
+                return f"Не нашла пользователя «{owner_spoken}». {hint}"
+            owner = matched
 
         db.add(ShoppingItem(name=item_name, owner=owner))
         db.commit()
