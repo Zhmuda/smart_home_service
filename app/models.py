@@ -72,6 +72,15 @@ class Expense(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
+class SavingGoal(Base):
+    __tablename__ = "saving_goals"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, default="Копилка")
+    target = Column(Integer, nullable=True)
+    owner = Column(String, nullable=False, default="Общее")
+
+
 class Saving(Base):
     __tablename__ = "savings"
 
@@ -79,15 +88,8 @@ class Saving(Base):
     amount = Column(Integer, nullable=False)
     note = Column(String, nullable=True)
     owner = Column(String, nullable=False, default="Общее")
+    goal_id = Column(Integer, ForeignKey("saving_goals.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
-class SavingGoal(Base):
-    __tablename__ = "saving_goals"
-
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False, default="Копилка")
-    target = Column(Integer, nullable=True)
 
 
 class CalendarEvent(Base):

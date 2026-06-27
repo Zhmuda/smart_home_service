@@ -19,6 +19,12 @@ class ExpenseCreate(BaseModel):
     owner: str = "Общее"
 
 
+class ExpenseUpdate(BaseModel):
+    amount: Optional[int] = None
+    category: Optional[str] = None
+    note: Optional[str] = None
+
+
 class ExpenseOut(BaseModel):
     id: int
     amount: int
@@ -73,7 +79,6 @@ def monthly_totals(db: Session = Depends(get_db)):
         .order_by("month")
         .all()
     )
-    # return last 6 months
     return [{"month": r.month, "total": r.total} for r in rows[-6:]]
 
 
@@ -81,6 +86,22 @@ def monthly_totals(db: Session = Depends(get_db)):
 def add_expense(body: ExpenseCreate, db: Session = Depends(get_db)):
     expense = Expense(amount=body.amount, category=body.category.strip(), note=body.note, owner=body.owner)
     db.add(expense)
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+@router.patch("/{expense_id}", response_model=ExpenseOut)
+def update_expense(expense_id: int, body: ExpenseUpdate, db: Session = Depends(get_db)):
+    expense = db.get(Expense, expense_id)
+    if not expense:
+        raise HTTPException(404)
+    if body.amount is not None:
+        expense.amount = body.amount
+    if body.category is not None:
+        expense.category = body.category.strip()
+    if body.note is not None:
+        expense.note = body.note or None
     db.commit()
     db.refresh(expense)
     return expense

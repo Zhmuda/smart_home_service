@@ -272,7 +272,27 @@ async def _handle_command(command: str, db: Session) -> str:
     if any(w in command for w in ("напомни", "напоминание", "напомнить")) and not any(w in command for w in ("измени", "изменить", "редактируй")):
         return "__START_REMINDER__"
 
-    if any(w in command for w in ("измени", "изменить", "редактируй", "перенеси", "переименуй")):
+    # --- Переименование покупки (одним шагом) ---
+    if "переименуй" in command:
+        m = re.search(r'переименуй\s+(.+?)\s+в\s+(.+)', command)
+        if m:
+            old_name, new_name = m.group(1).strip(), m.group(2).strip()
+            items = db.query(ShoppingItem).filter(ShoppingItem.bought.is_(False)).all()
+            match = next((i for i in items if _stem(old_name[:5]) in i.name.lower()), None)
+            if match:
+                match.name = new_name
+                db.commit()
+                return f"Переименовала «{old_name}» в «{new_name}» в списке покупок."
+            return f"Не нашла «{old_name}» в списке покупок."
+        return "Скажите: «переименуй молоко в кефир»."
+
+    if any(w in command for w in ("измени расход", "исправь расход", "поправь расход")):
+        return "__START_EXPENSE_EDIT__"
+
+    if any(w in command for w in ("измени вклад", "измени взнос", "исправь вклад", "исправь взнос")):
+        return "__START_DEPOSIT_EDIT__"
+
+    if any(w in command for w in ("измени", "изменить", "редактируй", "перенеси")):
         return "__START_EDIT__"
 
     # --- Список покупок ---
@@ -332,28 +352,40 @@ async def _handle_command(command: str, db: Session) -> str:
         amount = _parse_amount(command)
         if not amount:
             return "Не поняла сумму. Скажите: «положи 500 рублей в копилку»."
-        db.add(Saving(amount=amount))
+        goal = db.query(SavingGoal).order_by(SavingGoal.id).first()
+        dep = Saving(amount=amount, owner=goal.owner if goal else "Общее", goal_id=goal.id if goal else None)
+        db.add(dep)
         db.commit()
+        if goal:
+            total = db.query(func.sum(Saving.amount)).filter(Saving.goal_id == goal.id).scalar() or 0
+            return f"Добавила {amount} рублей в «{goal.name}». Итого: {total} рублей."
         total = db.query(func.sum(Saving.amount)).scalar() or 0
         return f"Добавила {amount} рублей. Итого в копилке: {total} рублей."
 
     if "сколько в копилке" in command or "копилк" in command:
+        goal = db.query(SavingGoal).order_by(SavingGoal.id).first()
+        if goal:
+            total = db.query(func.sum(Saving.amount)).filter(Saving.goal_id == goal.id).scalar() or 0
+            if goal.target:
+                pct = int(total / goal.target * 100)
+                return f"В копилке «{goal.name}»: {total} рублей из {goal.target} — {pct}%."
+            return f"В копилке «{goal.name}»: {total} рублей."
         total = db.query(func.sum(Saving.amount)).scalar() or 0
-        goal = db.query(SavingGoal).first()
-        if goal and goal.target:
-            pct = int(total / goal.target * 100)
-            return f"В копилке {total} рублей из {goal.target} — {pct}% от цели «{goal.name}»."
         return f"В копилке {total} рублей."
 
     if "на что копим" in command or "цель копилки" in command:
-        goal = db.query(SavingGoal).first()
-        if not goal:
-            return "Цель копилки не задана."
-        total = db.query(func.sum(Saving.amount)).scalar() or 0
-        if goal.target:
-            left = max(0, goal.target - total)
-            return f"Копим на «{goal.name}». Нужно {goal.target} рублей, осталось {left}."
-        return f"Копим на «{goal.name}»."
+        goals = db.query(SavingGoal).order_by(SavingGoal.id).all()
+        if not goals:
+            return "Целей для накопления ещё нет."
+        parts = []
+        for g in goals:
+            total = db.query(func.sum(Saving.amount)).filter(Saving.goal_id == g.id).scalar() or 0
+            if g.target:
+                left = max(0, g.target - total)
+                parts.append(f"«{g.name}»: {total} из {g.target} рублей, осталось {left}")
+            else:
+                parts.append(f"«{g.name}»: {total} рублей")
+        return "Копим: " + "; ".join(parts) + "."
 
     return FALLBACK
 
@@ -449,6 +481,34 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
             when = f"через {minutes} минут" if minutes < 60 else f"через {minutes // 60} ч."
             text = f"Напоминание «{state['subject']}» перенесено на {when}."
 
+    # --- Редактирование расхода ---
+    elif state and state["step"] == "expense_edit_awaiting_amount":
+        amount = _parse_amount(command)
+        if not amount or amount <= 0:
+            text = "Не поняла сумму. Повторите, например: «600»."
+        else:
+            exp = db.get(Expense, state["expense_id"])
+            old_amount = state["old_amount"]
+            if exp:
+                exp.amount = amount
+                db.commit()
+            _session_state.pop(session_id, None)
+            text = f"Изменила расход с {old_amount} на {amount} рублей."
+
+    # --- Редактирование взноса в копилку ---
+    elif state and state["step"] == "deposit_edit_awaiting_amount":
+        amount = _parse_amount(command)
+        if not amount or amount <= 0:
+            text = "Не поняла сумму. Повторите, например: «1000»."
+        else:
+            dep = db.get(Saving, state["deposit_id"])
+            old_amount = state["old_amount"]
+            if dep:
+                dep.amount = amount
+                db.commit()
+            _session_state.pop(session_id, None)
+            text = f"Изменила взнос с {old_amount} на {amount} рублей."
+
     # --- Календарь: добавление ---
     elif state and state["step"] == "cal_awaiting_person":
         if not command:
@@ -504,6 +564,20 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
                 _session_state[session_id] = {"step": "edit_awaiting_which"}
                 names = ", ".join(f"«{r.subject}»" for r in pending[:3])
                 text = f"Какое напоминание изменить? Активные: {names}."
+        elif text == "__START_EXPENSE_EDIT__":
+            last_exp = db.query(Expense).order_by(Expense.created_at.desc()).first()
+            if not last_exp:
+                text = "Нет записанных расходов."
+            else:
+                _session_state[session_id] = {"step": "expense_edit_awaiting_amount", "expense_id": last_exp.id, "old_amount": last_exp.amount}
+                text = f"Последний расход: {last_exp.amount} рублей на «{last_exp.category}». Какая новая сумма?"
+        elif text == "__START_DEPOSIT_EDIT__":
+            last_dep = db.query(Saving).order_by(Saving.created_at.desc()).first()
+            if not last_dep:
+                text = "Нет записанных взносов в копилку."
+            else:
+                _session_state[session_id] = {"step": "deposit_edit_awaiting_amount", "deposit_id": last_dep.id, "old_amount": last_dep.amount}
+                text = f"Последний взнос: {last_dep.amount} рублей. Какая новая сумма?"
 
     return {
         "response": _reply(text),

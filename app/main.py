@@ -17,6 +17,14 @@ def _migrate_add_owner(db: Session) -> None:
             db.execute(text(f"ALTER TABLE {table} ADD COLUMN owner TEXT NOT NULL DEFAULT 'Общее'"))
         except Exception:
             pass
+    for stmt in (
+        "ALTER TABLE saving_goals ADD COLUMN owner TEXT NOT NULL DEFAULT 'Общее'",
+        "ALTER TABLE savings ADD COLUMN goal_id INTEGER REFERENCES saving_goals(id) ON DELETE SET NULL",
+    ):
+        try:
+            db.execute(text(stmt))
+        except Exception:
+            pass
     db.commit()
 
 

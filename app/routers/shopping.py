@@ -13,6 +13,10 @@ class ShoppingItemCreate(BaseModel):
     owner: str = "Общее"
 
 
+class ShoppingItemUpdate(BaseModel):
+    name: str
+
+
 class ShoppingItemOut(BaseModel):
     id: int
     name: str
@@ -32,6 +36,17 @@ def list_items(db: Session = Depends(get_db)):
 def add_item(body: ShoppingItemCreate, db: Session = Depends(get_db)):
     item = ShoppingItem(name=body.name.strip(), owner=body.owner)
     db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/{item_id}", response_model=ShoppingItemOut)
+def update_item(item_id: int, body: ShoppingItemUpdate, db: Session = Depends(get_db)):
+    item = db.get(ShoppingItem, item_id)
+    if not item:
+        raise HTTPException(404)
+    item.name = body.name.strip()
     db.commit()
     db.refresh(item)
     return item
