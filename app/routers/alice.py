@@ -297,13 +297,36 @@ async def _handle_command(command: str, db: Session) -> str:
 
     # --- Список покупок ---
     if "добавь" in command and "список" in command:
-        m = re.search(r'добавь\s+(.+?)\s+в\s+список', command)
-        item_name = m.group(1).strip() if m else None
+        item_name: str | None = None
+        owner_spoken: str | None = None
+
+        # "добавь [товар] в список [имя]?"
+        m = re.search(r'добавь\s+(.+?)\s+в\s+(?:мой\s+|свой\s+|общий\s+)?список(?:\s+(.+))?', command)
+        if m:
+            item_name = m.group(1).strip()
+            owner_spoken = m.group(2).strip() if m.group(2) else None
+        else:
+            # "добавь в список [товар]"
+            m2 = re.search(r'добавь\s+в\s+(?:мой\s+|свой\s+|общий\s+)?список\s+(.+)', command)
+            if m2:
+                item_name = m2.group(1).strip()
+
         if not item_name:
             return "Не поняла, что добавить. Скажите: «добавь молоко в список»."
-        db.add(ShoppingItem(name=item_name))
+
+        owner = "Общее"
+        if owner_spoken:
+            known = [r[0] for r in db.query(ShoppingItem.owner).distinct().all() if r[0] != "Общее"]
+            owner = next(
+                (o for o in known if o.lower().startswith(owner_spoken[:3].lower())),
+                owner_spoken.capitalize(),
+            )
+
+        db.add(ShoppingItem(name=item_name, owner=owner))
         db.commit()
-        return f"Добавила «{item_name}» в список покупок."
+        if owner == "Общее":
+            return f"Добавила «{item_name}» в общий список покупок."
+        return f"Добавила «{item_name}» в список {owner}."
 
     if any(w in command for w in ("что нужно купить", "что купить", "список покупок", "что в списке")):
         return _shopping_list_reply(db)
@@ -348,19 +371,37 @@ async def _handle_command(command: str, db: Session) -> str:
         return "__START_CALENDAR__"
 
     # --- Копилка ---
-    if ("положи" in command or "добавь" in command) and "копилк" in command:
+    saving_goals_all = db.query(SavingGoal).order_by(SavingGoal.id).all()
+    _goal_name_hit = [g for g in saving_goals_all if _name_matches(g.name, command)]
+    _is_saving_cmd = ("положи" in command or ("добавь" in command and "список" not in command)) and (
+        "копилк" in command or bool(_goal_name_hit)
+    )
+
+    if _is_saving_cmd:
         amount = _parse_amount(command)
         if not amount:
             return "Не поняла сумму. Скажите: «положи 500 рублей в копилку»."
-        goal = db.query(SavingGoal).order_by(SavingGoal.id).first()
-        dep = Saving(amount=amount, owner=goal.owner if goal else "Общее", goal_id=goal.id if goal else None)
+
+        if _goal_name_hit:
+            target_goal = _goal_name_hit[0]
+        elif len(saving_goals_all) == 1:
+            target_goal = saving_goals_all[0]
+        elif len(saving_goals_all) > 1:
+            # Multiple goals — ask in dialog (signal with amount encoded)
+            return f"__SAVINGS_PICK__{amount}"
+        else:
+            target_goal = None
+
+        if target_goal:
+            dep = Saving(amount=amount, owner=target_goal.owner, goal_id=target_goal.id)
+            db.add(dep)
+            db.commit()
+            total = db.query(func.sum(Saving.amount)).filter(Saving.goal_id == target_goal.id).scalar() or 0
+            return f"Добавила {amount} рублей в «{target_goal.name}». Итого: {total} рублей."
+        dep = Saving(amount=amount, owner="Общее")
         db.add(dep)
         db.commit()
-        if goal:
-            total = db.query(func.sum(Saving.amount)).filter(Saving.goal_id == goal.id).scalar() or 0
-            return f"Добавила {amount} рублей в «{goal.name}». Итого: {total} рублей."
-        total = db.query(func.sum(Saving.amount)).scalar() or 0
-        return f"Добавила {amount} рублей. Итого в копилке: {total} рублей."
+        return f"Добавила {amount} рублей в копилку."
 
     if "сколько в копилке" in command or "копилк" in command:
         goal = db.query(SavingGoal).order_by(SavingGoal.id).first()
@@ -482,6 +523,22 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
             when = f"через {minutes} минут" if minutes < 60 else f"через {minutes // 60} ч."
             text = f"Напоминание «{state['subject']}» перенесено на {when}."
 
+    # --- Выбор цели копилки ---
+    elif state and state["step"] == "saving_awaiting_goal":
+        goals = db.query(SavingGoal).order_by(SavingGoal.id).all()
+        matched = next((g for g in goals if _name_matches(g.name, command)), None)
+        if not matched:
+            names = ", ".join(f"«{g.name}»" for g in goals)
+            text = f"Не нашла такую цель. Скажите одно из: {names}."
+        else:
+            amount = state["amount"]
+            dep = Saving(amount=amount, owner=matched.owner, goal_id=matched.id)
+            db.add(dep)
+            db.commit()
+            total = db.query(func.sum(Saving.amount)).filter(Saving.goal_id == matched.id).scalar() or 0
+            _session_state.pop(session_id, None)
+            text = f"Добавила {amount} рублей в «{matched.name}». Итого: {total} рублей."
+
     # --- Редактирование расхода ---
     elif state and state["step"] == "expense_edit_awaiting_amount":
         amount = _parse_amount(command)
@@ -565,6 +622,12 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
                 _session_state[session_id] = {"step": "edit_awaiting_which"}
                 names = ", ".join(f"«{r.subject}»" for r in pending[:3])
                 text = f"Какое напоминание изменить? Активные: {names}."
+        elif text.startswith("__SAVINGS_PICK__"):
+            amount = int(text.replace("__SAVINGS_PICK__", ""))
+            _session_state[session_id] = {"step": "saving_awaiting_goal", "amount": amount}
+            goals = db.query(SavingGoal).order_by(SavingGoal.id).all()
+            names = ", ".join(f"«{g.name}»" for g in goals)
+            text = f"В какую копилку? {names}."
         elif text == "__START_EXPENSE_EDIT__":
             last_exp = db.query(Expense).order_by(Expense.created_at.desc()).first()
             if not last_exp:
