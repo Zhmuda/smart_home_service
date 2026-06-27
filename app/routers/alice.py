@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -5,14 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Scenario, ScenarioRun
-from app.scenario_engine import device_states, run_scenario
+from app.scenario_engine import _last_snapshot, device_states, run_scenario
 from app.yandex_client import client
 
 router = APIRouter(prefix="/alice", tags=["alice"])
 
 ON_OFF = "devices.capabilities.on_off"
-GREETING = "Привет! Спросите про температуру, влажность, какие устройства офлайн, когда последний раз сработал сценарий, либо скажите «включи …» / «выключи …» / «запусти сценарий …»."
-FALLBACK = "Не поняла вопрос. Спросите про температуру, влажность, устройства офлайн или сценарии — либо команду «включи …» / «выключи …» / «запусти сценарий …»."
+GREETING = "Привет! Спросите «как дома» для общей сводки, про температуру, влажность, какие устройства офлайн, когда последний раз сработал сценарий, либо скажите «включи …» / «выключи …» / «запусти сценарий …»."
+FALLBACK = "Не поняла вопрос. Скажите «как дома» для сводки, или спросите про температуру, влажность, устройства офлайн, сценарии — либо «включи …» / «выключи …» / «запусти сценарий …»."
 EXIT_WORDS = ("выход", "хватит", "стоп", "пока")
 
 
@@ -54,7 +55,67 @@ def _find_scenario_by_name(scenarios: list[Scenario], command: str) -> Scenario 
     return None
 
 
+def _snapshot_value(instance: str) -> float | None:
+    if _last_snapshot is None:
+        return None
+    for (_, _, inst), value in _last_snapshot.items():
+        if inst == instance:
+            return value
+    return None
+
+
+def _time_ago(dt: datetime) -> str:
+    now = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    diff = int((now - dt).total_seconds())
+    if diff < 60:
+        return "только что"
+    if diff < 3600:
+        return f"{diff // 60} мин. назад"
+    if diff < 86400:
+        return f"{diff // 3600} ч. назад"
+    return f"{diff // 86400} дн. назад"
+
+
+async def _home_summary(db: Session) -> str:
+    parts = []
+
+    temp = _snapshot_value("temperature")
+    humidity = _snapshot_value("humidity")
+    if temp is not None:
+        parts.append(f"температура {temp}°")
+    if humidity is not None:
+        parts.append(f"влажность {int(humidity)}%")
+
+    offline = [did for did, state in device_states.items() if state != "online"]
+    if offline:
+        try:
+            user_info = await client.get_user_info()
+            names = {d["id"]: d["name"] for d in user_info.get("devices", [])}
+            offline_names = [names.get(d, d) for d in offline]
+            parts.append(f"офлайн: {', '.join(offline_names)}")
+        except Exception:
+            parts.append(f"офлайн устройств: {len(offline)}")
+    else:
+        parts.append("все устройства онлайн")
+
+    last = db.query(ScenarioRun).order_by(ScenarioRun.triggered_at.desc()).first()
+    if last:
+        scenario = db.get(Scenario, last.scenario_id)
+        name = scenario.name if scenario else f"#{last.scenario_id}"
+        status = "успешно" if last.status == "ok" else last.status
+        parts.append(f"последний сценарий «{name}» сработал {_time_ago(last.triggered_at)}, {status}")
+    else:
+        parts.append("сценарии ещё не запускались")
+
+    return ". ".join(parts).capitalize() + "."
+
+
 async def _handle_command(command: str, db: Session) -> str:
+    if any(w in command for w in ("как дома", "что дома", "сводка", "что происходит", "доклад")):
+        return await _home_summary(db)
+
     if "температур" in command:
         user_info = await client.get_user_info()
         found = _find_property(user_info.get("devices", []), "temperature")
