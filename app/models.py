@@ -88,3 +88,15 @@ class SavingGoal(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, default="Копилка")
     target = Column(Integer, nullable=True)
+
+
+class CalendarEvent(Base):
+    __tablename__ = "calendar_events"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String, nullable=False)
+    person = Column(String, nullable=False)
+    event_date = Column(String, nullable=False, index=True)  # YYYY-MM-DD
+    start_time = Column(String, nullable=True)               # HH:MM
+    end_time = Column(String, nullable=True)                 # HH:MM
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

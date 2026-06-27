@@ -7,7 +7,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Reminder, Saving, SavingGoal, Scenario, ScenarioRun, ShoppingItem, Expense
+from app.models import CalendarEvent, Expense, Reminder, Saving, SavingGoal, Scenario, ScenarioRun, ShoppingItem
 from app.scenario_engine import _last_snapshot, device_states, run_scenario
 from app.yandex_client import client
 
@@ -16,16 +16,105 @@ router = APIRouter(prefix="/alice", tags=["alice"])
 GREETING = (
     "Привет! Вот что я умею. "
     "«Как дома» — сводка по дому. "
-    "«Напомни» — создать напоминание, «измени напоминание» — изменить. "
-    "«Добавь [товар] в список» — список покупок, «что нужно купить» — зачитать список. "
-    "«Записи [сумма] рублей на [категория]» — расходы, «сколько потратили» — итог за месяц. "
-    "«Положи [сумма] рублей в копилку», «сколько в копилке» — накопления. "
+    "«Напомни» — напоминание. "
+    "«Добавь [товар] в список» — покупки. "
+    "«Записи [сумма] рублей на [категория]» — расходы. "
+    "«Положи [сумма] в копилку» — накопления. "
+    "«Запланируй дело» — добавить в семейный календарь. "
+    "«Что на [дату]» — события на день. "
     "Для выхода — «стоп»."
 )
 FALLBACK = (
     "Не поняла команду. Попробуйте: «как дома», «напомни», «добавь в список», "
-    "«записи расход», «сколько потратили», «положи в копилку», «сколько в копилке»."
+    "«записи расход», «положи в копилку», «запланируй дело», «что на завтра»."
 )
+
+_WEEKDAYS = {
+    "понедельник": 0, "вторник": 1, "среду": 2, "среда": 2,
+    "четверг": 3, "пятницу": 4, "пятница": 4,
+    "субботу": 5, "суббота": 5, "воскресенье": 6, "воскресенье": 6,
+}
+_MONTHS = {
+    "январ": 1, "феврал": 2, "март": 3, "апрел": 4,
+    "май": 5, "мая": 5, "июн": 6, "июл": 7, "август": 8,
+    "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12,
+}
+_MONTH_NAMES = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+    5: "мая", 6: "июня", 7: "июля", 8: "августа",
+    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+}
+
+
+def _parse_russian_date(text: str) -> str | None:
+    now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))  # Moscow
+    today = now.date()
+
+    if "послезавтра" in text:
+        return (today + timedelta(days=2)).strftime("%Y-%m-%d")
+    if "завтра" in text:
+        return (today + timedelta(days=1)).strftime("%Y-%m-%d")
+    if "сегодня" in text:
+        return today.strftime("%Y-%m-%d")
+
+    for name, wd in _WEEKDAYS.items():
+        if name in text:
+            days_ahead = (wd - today.weekday()) % 7 or 7
+            return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+
+    for stem, month_num in _MONTHS.items():
+        if stem in text:
+            m = re.search(r'(\d{1,2})\s+' + stem[:3], text)
+            if m:
+                day = int(m.group(1))
+                try:
+                    from datetime import date
+                    d = date(today.year, month_num, day)
+                    if d < today:
+                        d = date(today.year + 1, month_num, day)
+                    return d.strftime("%Y-%m-%d")
+                except ValueError:
+                    pass
+    return None
+
+
+def _parse_time_range(text: str) -> tuple[str | None, str | None]:
+    m = re.search(r'с\s+(\d{1,2})(?::(\d{2}))?\s+до\s+(\d{1,2})(?::(\d{2}))?', text)
+    if m:
+        h1, m1, h2, m2 = m.groups()
+        return f"{int(h1):02d}:{m1 or '00'}", f"{int(h2):02d}:{m2 or '00'}"
+    m = re.search(r'в\s+(\d{1,2})(?::(\d{2}))?', text)
+    if m:
+        h, mn = m.groups()
+        return f"{int(h):02d}:{mn or '00'}", None
+    return None, None
+
+
+def _format_event_time(start: str | None, end: str | None) -> str:
+    if start and end:
+        return f" с {start} до {end}"
+    if start:
+        return f" в {start}"
+    return ""
+
+
+def _query_calendar(text: str, db: Session) -> str:
+    date_str = _parse_russian_date(text)
+    if not date_str:
+        now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
+        date_str = now.date().strftime("%Y-%m-%d")
+
+    events = db.query(CalendarEvent).filter(CalendarEvent.event_date == date_str).order_by(CalendarEvent.start_time).all()
+    d = datetime.strptime(date_str, "%Y-%m-%d")
+    label = f"{d.day} {_MONTH_NAMES[d.month]}"
+
+    if not events:
+        return f"На {label} ничего не запланировано."
+    parts = [f"На {label}:"]
+    for ev in events:
+        time_str = _format_event_time(ev.start_time, ev.end_time)
+        parts.append(f"у {ev.person} — {ev.title}{time_str}")
+    return ". ".join(parts) + "."
 EXIT_WORDS = ("выход", "хватит", "стоп", "пока")
 
 _session_state: dict[str, dict] = {}
@@ -230,6 +319,14 @@ async def _handle_command(command: str, db: Session) -> str:
         if cat_m:
             return _monthly_expense_total(db, cat_m.group(1))
 
+    # --- Календарь (запрос) ---
+    if any(w in command for w in ("что на", "что у", "что запланировано", "события на", "дела на")):
+        return _query_calendar(command, db)
+
+    # --- Календарь (добавление) ---
+    if any(w in command for w in ("запланируй", "добавь в календарь", "добавь событие", "добавь дело")):
+        return "__START_CALENDAR__"
+
     # --- Копилка ---
     if ("положи" in command or "добавь" in command) and "копилк" in command:
         amount = _parse_amount(command)
@@ -352,12 +449,51 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
             when = f"через {minutes} минут" if minutes < 60 else f"через {minutes // 60} ч."
             text = f"Напоминание «{state['subject']}» перенесено на {when}."
 
+    # --- Календарь: добавление ---
+    elif state and state["step"] == "cal_awaiting_person":
+        if not command:
+            text = "Не расслышала. Для кого запланировать?"
+        else:
+            person = command.strip().capitalize()
+            _session_state[session_id] = {"step": "cal_awaiting_title", "person": person}
+            text = f"Хорошо, для {person}. Что за дело?"
+
+    elif state and state["step"] == "cal_awaiting_title":
+        if not command:
+            text = "Не расслышала. Какое дело?"
+        else:
+            _session_state[session_id] = {**state, "step": "cal_awaiting_datetime", "title": command}
+            text = "Когда? Скажите дату, например: «завтра», «в пятницу», «15 июля». Время необязательно."
+
+    elif state and state["step"] == "cal_awaiting_datetime":
+        date_str = _parse_russian_date(command)
+        if not date_str:
+            text = "Не поняла дату. Скажите, например: «завтра», «в пятницу» или «15 июля»."
+        else:
+            start_time, end_time = _parse_time_range(command)
+            db.add(CalendarEvent(
+                title=state["title"],
+                person=state["person"],
+                event_date=date_str,
+                start_time=start_time,
+                end_time=end_time,
+            ))
+            db.commit()
+            _session_state.pop(session_id, None)
+            d = datetime.strptime(date_str, "%Y-%m-%d")
+            label = f"{d.day} {_MONTH_NAMES[d.month]}"
+            time_str = _format_event_time(start_time, end_time)
+            text = f"Записала! У {state['person']} {label}{time_str}: {state['title']}."
+
     elif session.get("new") and not command:
         text = GREETING
 
     else:
         text = await _handle_command(command, db)
-        if text == "__START_REMINDER__":
+        if text == "__START_CALENDAR__":
+            _session_state[session_id] = {"step": "cal_awaiting_person"}
+            text = "Для кого запланировать дело?"
+        elif text == "__START_REMINDER__":
             _session_state[session_id] = {"step": "awaiting_subject"}
             text = "О чём напомнить?"
         elif text == "__START_EDIT__":
