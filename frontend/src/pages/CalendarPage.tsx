@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api'
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { avatarColor, useProfile } from '../contexts/ProfileContext'
@@ -58,7 +59,7 @@ export default function CalendarPage() {
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
 
   async function load() {
-    const res = await fetch(`/api/calendar?month=${monthKey}`)
+    const res = await apiFetch(`/api/calendar?month=${monthKey}`)
     if (res.ok) setEvents(await res.json())
   }
 
@@ -66,7 +67,7 @@ export default function CalendarPage() {
 
   async function addEvent() {
     if (!formTitle.trim() || !formPerson.trim() || !formDate) return
-    await fetch('/api/calendar', {
+    await apiFetch('/api/calendar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -85,7 +86,7 @@ export default function CalendarPage() {
   }
 
   async function deleteEvent(id: number) {
-    await fetch(`/api/calendar/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/calendar/${id}`, { method: 'DELETE' })
     load()
   }
 

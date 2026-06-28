@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.db import get_db
-from app.models import Reminder
+from app.models import Reminder, User
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
 
@@ -37,14 +38,21 @@ class ReminderOut(BaseModel):
 
 
 @router.get("", response_model=list[ReminderOut])
-def list_reminders(db: Session = Depends(get_db)):
-    return db.query(Reminder).order_by(Reminder.remind_at).all()
+def list_reminders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return db.query(Reminder).filter(Reminder.user_id == current_user.id).order_by(Reminder.remind_at).all()
 
 
 @router.post("", response_model=ReminderOut)
-def create_reminder(body: ReminderCreate, db: Session = Depends(get_db)):
+def create_reminder(
+    body: ReminderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     repeat = body.repeat if body.repeat in REPEAT_OPTIONS else None
-    reminder = Reminder(subject=body.subject, remind_at=body.remind_at, repeat=repeat)
+    reminder = Reminder(subject=body.subject, remind_at=body.remind_at, repeat=repeat, user_id=current_user.id)
     db.add(reminder)
     db.commit()
     db.refresh(reminder)
@@ -52,8 +60,13 @@ def create_reminder(body: ReminderCreate, db: Session = Depends(get_db)):
 
 
 @router.patch("/{reminder_id}", response_model=ReminderOut)
-def update_reminder(reminder_id: int, body: ReminderUpdate, db: Session = Depends(get_db)):
-    reminder = db.get(Reminder, reminder_id)
+def update_reminder(
+    reminder_id: int,
+    body: ReminderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    reminder = db.query(Reminder).filter(Reminder.id == reminder_id, Reminder.user_id == current_user.id).first()
     if not reminder:
         raise HTTPException(status_code=404, detail="Not found")
     if body.subject is not None:
@@ -69,8 +82,12 @@ def update_reminder(reminder_id: int, body: ReminderUpdate, db: Session = Depend
 
 
 @router.delete("/{reminder_id}")
-def delete_reminder(reminder_id: int, db: Session = Depends(get_db)):
-    reminder = db.get(Reminder, reminder_id)
+def delete_reminder(
+    reminder_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    reminder = db.query(Reminder).filter(Reminder.id == reminder_id, Reminder.user_id == current_user.id).first()
     if reminder:
         db.delete(reminder)
         db.commit()

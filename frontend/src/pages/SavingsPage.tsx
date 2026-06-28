@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api'
 import { Check, ChevronDown, ChevronUp, Pencil, PiggyBank, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useProfile } from '../contexts/ProfileContext'
@@ -38,7 +39,7 @@ export default function SavingsPage() {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
 
   async function load() {
-    const res = await fetch('/api/savings')
+    const res = await apiFetch('/api/savings')
     if (res.ok) setGoals(await res.json())
   }
 
@@ -51,7 +52,7 @@ export default function SavingsPage() {
   async function createGoal() {
     if (!newGoalName.trim()) return
     const owner = tab === 'common' ? 'Общее' : (currentUser ?? 'Общее')
-    await fetch('/api/savings/goals', {
+    await apiFetch('/api/savings/goals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newGoalName.trim(), target: newGoalTarget ? parseInt(newGoalTarget) : null, owner }),
@@ -64,7 +65,7 @@ export default function SavingsPage() {
 
   async function updateGoal(id: number) {
     if (!editGoalName.trim()) return
-    await fetch(`/api/savings/goals/${id}`, {
+    await apiFetch(`/api/savings/goals/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: editGoalName.trim(), target: editGoalTarget ? parseInt(editGoalTarget) : null }),
@@ -75,7 +76,7 @@ export default function SavingsPage() {
 
   async function deleteGoal(id: number) {
     if (!confirm('Удалить цель и все взносы к ней?')) return
-    await fetch(`/api/savings/goals/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/savings/goals/${id}`, { method: 'DELETE' })
     load()
   }
 
@@ -88,7 +89,7 @@ export default function SavingsPage() {
   async function addDeposit(goalId: number) {
     const amt = parseInt(depositAmount)
     if (!amt || amt <= 0) return
-    await fetch(`/api/savings/goals/${goalId}/deposits`, {
+    await apiFetch(`/api/savings/goals/${goalId}/deposits`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: amt, note: depositNote.trim() || undefined }),
@@ -109,7 +110,7 @@ export default function SavingsPage() {
     if (!editDepId) return
     const amt = parseInt(editDepAmount)
     if (!amt || amt <= 0) return
-    await fetch(`/api/savings/deposits/${editDepId}`, {
+    await apiFetch(`/api/savings/deposits/${editDepId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: amt, note: editDepNote || null }),
@@ -119,7 +120,7 @@ export default function SavingsPage() {
   }
 
   async function deleteDeposit(id: number) {
-    await fetch(`/api/savings/deposits/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/savings/deposits/${id}`, { method: 'DELETE' })
     load()
   }
 

@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api'
 import { Bell, Check, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { formatMoscow, moscowInputToUtc, nowMoscowInput, utcToMoscowInput } from '../utils/time'
@@ -27,13 +28,13 @@ const REPEAT_RU: Record<string, string> = {
 }
 
 async function fetchReminders(): Promise<Reminder[]> {
-  const res = await fetch('/api/reminders')
+  const res = await apiFetch('/api/reminders')
   if (!res.ok) throw new Error('Failed to fetch')
   return res.json()
 }
 
 async function createReminder(subject: string, remind_at: string, repeat: string | null): Promise<void> {
-  await fetch('/api/reminders', {
+  await apiFetch('/api/reminders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subject, remind_at, repeat: repeat || null }),
@@ -41,7 +42,7 @@ async function createReminder(subject: string, remind_at: string, repeat: string
 }
 
 async function updateReminder(id: number, subject: string, remind_at: string, repeat: string | null): Promise<void> {
-  await fetch(`/api/reminders/${id}`, {
+  await apiFetch(`/api/reminders/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subject, remind_at, repeat: repeat || null }),
@@ -49,7 +50,7 @@ async function updateReminder(id: number, subject: string, remind_at: string, re
 }
 
 async function deleteReminder(id: number): Promise<void> {
-  await fetch(`/api/reminders/${id}`, { method: 'DELETE' })
+  await apiFetch(`/api/reminders/${id}`, { method: 'DELETE' })
 }
 
 const INPUT_CLS = 'rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring'

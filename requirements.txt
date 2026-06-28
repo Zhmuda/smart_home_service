@@ -6,3 +6,5 @@ sqlalchemy==2.0.36
 apscheduler==3.10.4
 astral==3.2
 tzdata==2025.2
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4

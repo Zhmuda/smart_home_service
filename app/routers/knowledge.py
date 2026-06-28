@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.db import get_db
-from app.models import KnowledgeEntry
+from app.models import KnowledgeEntry, User
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
@@ -54,8 +55,9 @@ def list_entries(
     tag: Optional[str] = None,
     q: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = db.query(KnowledgeEntry)
+    query = db.query(KnowledgeEntry).filter(KnowledgeEntry.user_id == current_user.id)
     if category:
         query = query.filter(KnowledgeEntry.category == category)
     entries = query.order_by(KnowledgeEntry.updated_at.desc()).all()
@@ -68,13 +70,18 @@ def list_entries(
 
 
 @router.post("", response_model=EntryOut)
-def create_entry(body: EntryCreate, db: Session = Depends(get_db)):
+def create_entry(
+    body: EntryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     category = body.category if body.category in CATEGORIES else "Разное"
     entry = KnowledgeEntry(
         title=body.title.strip(),
         content=body.content.strip(),
         category=category,
         tags=body.tags,
+        user_id=current_user.id,
     )
     db.add(entry)
     db.commit()
@@ -83,8 +90,15 @@ def create_entry(body: EntryCreate, db: Session = Depends(get_db)):
 
 
 @router.patch("/{entry_id}", response_model=EntryOut)
-def update_entry(entry_id: int, body: EntryUpdate, db: Session = Depends(get_db)):
-    entry = db.get(KnowledgeEntry, entry_id)
+def update_entry(
+    entry_id: int,
+    body: EntryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    entry = db.query(KnowledgeEntry).filter(
+        KnowledgeEntry.id == entry_id, KnowledgeEntry.user_id == current_user.id
+    ).first()
     if not entry:
         raise HTTPException(404)
     if body.title is not None:
@@ -102,8 +116,14 @@ def update_entry(entry_id: int, body: EntryUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/{entry_id}")
-def delete_entry(entry_id: int, db: Session = Depends(get_db)):
-    entry = db.get(KnowledgeEntry, entry_id)
+def delete_entry(
+    entry_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    entry = db.query(KnowledgeEntry).filter(
+        KnowledgeEntry.id == entry_id, KnowledgeEntry.user_id == current_user.id
+    ).first()
     if entry:
         db.delete(entry)
         db.commit()

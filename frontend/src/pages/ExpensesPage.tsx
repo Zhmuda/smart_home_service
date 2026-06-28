@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api'
 import { Check, Pencil, Plus, TrendingUp, Trash2, Users, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -40,7 +41,7 @@ export default function ExpensesPage() {
   const [editing, setEditing] = useState<EditState | null>(null)
 
   async function load() {
-    const res = await fetch('/api/expenses')
+    const res = await apiFetch('/api/expenses')
     if (res.ok) setExpenses(await res.json())
   }
 
@@ -50,7 +51,7 @@ export default function ExpensesPage() {
     const amt = parseInt(amount)
     if (!amt || amt <= 0) return
     const owner = filter === 'common' ? 'Общее' : (currentUser ?? 'Общее')
-    await fetch('/api/expenses', {
+    await apiFetch('/api/expenses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: amt, category, note: note.trim() || undefined, owner }),
@@ -61,7 +62,7 @@ export default function ExpensesPage() {
   }
 
   async function deleteExpense(id: number) {
-    await fetch(`/api/expenses/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/expenses/${id}`, { method: 'DELETE' })
     load()
   }
 
@@ -73,7 +74,7 @@ export default function ExpensesPage() {
     if (!editing) return
     const amt = parseInt(editing.amount)
     if (!amt || amt <= 0) return
-    await fetch(`/api/expenses/${editing.id}`, {
+    await apiFetch(`/api/expenses/${editing.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: amt, category: editing.category, note: editing.note || null }),

@@ -1,6 +1,7 @@
-import { BarChart3, Bell, BookOpen, CalendarDays, Home, Menu, Mic, Moon, PiggyBank, ShoppingCart, Sun, TrendingUp, Workflow, X } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, CalendarDays, Home, LogOut, Menu, Mic, Moon, PiggyBank, ShoppingCart, Sun, TrendingUp, Workflow, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { avatarColor, useProfile } from '../contexts/ProfileContext'
 import { useLive } from '../contexts/LiveContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -36,6 +37,7 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { theme, toggle } = useTheme()
   const { currentUser, openPicker } = useProfile()
+  const { user, logout } = useAuth()
 
   return (
     <>
@@ -80,12 +82,22 @@ export default function Header() {
               {currentUser[0].toUpperCase()}
             </button>
           )}
+          {user && !currentUser && (
+            <span className="hidden text-xs text-sidebar-muted md:block">{user.name}</span>
+          )}
           <button
             onClick={toggle}
             title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
             className="flex h-8 w-8 items-center justify-center rounded-xl text-sidebar-muted hover:bg-white/5 hover:text-white transition-colors"
           >
             {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={logout}
+            title="Выйти"
+            className="flex h-8 w-8 items-center justify-center rounded-xl text-sidebar-muted hover:bg-white/5 hover:text-white transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
           </button>
 
           {/* Гамбургер — мобильный */}

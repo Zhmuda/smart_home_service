@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal, engine
 from app.models import Scenario
-from app.routers import alice, calendar, devices, expenses, knowledge, reminders, savings, scenarios, shopping, stats
+from app.routers import alice, auth, calendar, devices, expenses, knowledge, reminders, savings, scenarios, shopping, stats
 from app.scenario_engine import engine_status, start_engine, stop_engine
 from app.ws import manager
 
@@ -22,6 +22,14 @@ def _migrate_add_owner(db: Session) -> None:
         "ALTER TABLE savings ADD COLUMN goal_id INTEGER REFERENCES saving_goals(id) ON DELETE SET NULL",
         "ALTER TABLE reminders ADD COLUMN repeat TEXT",
         "ALTER TABLE knowledge ADD COLUMN updated_at DATETIME",
+        # multi-user migrations
+        "ALTER TABLE shopping_items ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
+        "ALTER TABLE expenses ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
+        "ALTER TABLE savings ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
+        "ALTER TABLE saving_goals ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
+        "ALTER TABLE reminders ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
+        "ALTER TABLE calendar_events ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
+        "ALTER TABLE knowledge ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
     ):
         try:
             db.execute(text(stmt))
@@ -56,6 +64,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Smart Home Service", lifespan=lifespan)
+app.include_router(auth.router)
 app.include_router(devices.router)
 app.include_router(scenarios.router)
 app.include_router(stats.router)

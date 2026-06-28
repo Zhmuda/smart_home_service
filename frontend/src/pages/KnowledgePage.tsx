@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api'
 import { BookOpen, Check, Pencil, Plus, Search, Tag, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -40,7 +41,7 @@ async function fetchEntries(q?: string, category?: string): Promise<KnowledgeEnt
   const params = new URLSearchParams()
   if (q) params.set('q', q)
   if (category) params.set('category', category)
-  const res = await fetch(`/api/knowledge?${params}`)
+  const res = await apiFetch(`/api/knowledge?${params}`)
   if (!res.ok) throw new Error('fetch failed')
   return res.json()
 }
@@ -51,7 +52,7 @@ async function createEntry(data: {
   category: string
   tags: string[]
 }): Promise<KnowledgeEntry> {
-  const res = await fetch('/api/knowledge', {
+  const res = await apiFetch('/api/knowledge', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -63,7 +64,7 @@ async function updateEntry(
   id: number,
   data: Partial<{ title: string; content: string; category: string; tags: string[] }>,
 ): Promise<KnowledgeEntry> {
-  const res = await fetch(`/api/knowledge/${id}`, {
+  const res = await apiFetch(`/api/knowledge/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -72,7 +73,7 @@ async function updateEntry(
 }
 
 async function deleteEntry(id: number): Promise<void> {
-  await fetch(`/api/knowledge/${id}`, { method: 'DELETE' })
+  await apiFetch(`/api/knowledge/${id}`, { method: 'DELETE' })
 }
 
 function TagChip({ tag, onRemove }: { tag: string; onRemove?: () => void }) {

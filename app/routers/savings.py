@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.db import get_db
-from app.models import Saving, SavingGoal
+from app.models import Saving, SavingGoal, User
 
 router = APIRouter(prefix="/savings", tags=["savings"])
 
@@ -53,22 +54,26 @@ class GoalOut(BaseModel):
 
 
 @router.get("", response_model=list[GoalOut])
-def list_goals(db: Session = Depends(get_db)):
-    goals = db.query(SavingGoal).order_by(SavingGoal.id).all()
+def list_goals(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    goals = db.query(SavingGoal).filter(SavingGoal.user_id == current_user.id).order_by(SavingGoal.id).all()
     result = []
     for g in goals:
         deposits = db.query(Saving).filter(Saving.goal_id == g.id).order_by(Saving.created_at.desc()).all()
         total = sum(d.amount for d in deposits)
-        result.append(GoalOut(
-            id=g.id, name=g.name, target=g.target, owner=g.owner,
-            total=total, deposits=deposits,
-        ))
+        result.append(GoalOut(id=g.id, name=g.name, target=g.target, owner=g.owner, total=total, deposits=deposits))
     return result
 
 
 @router.post("/goals", response_model=GoalOut, status_code=201)
-def create_goal(body: GoalCreate, db: Session = Depends(get_db)):
-    goal = SavingGoal(name=body.name.strip(), target=body.target, owner=body.owner)
+def create_goal(
+    body: GoalCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    goal = SavingGoal(name=body.name.strip(), target=body.target, owner=body.owner, user_id=current_user.id)
     db.add(goal)
     db.commit()
     db.refresh(goal)
@@ -76,8 +81,13 @@ def create_goal(body: GoalCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/goals/{goal_id}", response_model=GoalOut)
-def update_goal(goal_id: int, body: GoalUpdate, db: Session = Depends(get_db)):
-    goal = db.get(SavingGoal, goal_id)
+def update_goal(
+    goal_id: int,
+    body: GoalUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    goal = db.query(SavingGoal).filter(SavingGoal.id == goal_id, SavingGoal.user_id == current_user.id).first()
     if not goal:
         raise HTTPException(404)
     if body.name is not None:
@@ -91,8 +101,12 @@ def update_goal(goal_id: int, body: GoalUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/goals/{goal_id}", status_code=204)
-def delete_goal(goal_id: int, db: Session = Depends(get_db)):
-    goal = db.get(SavingGoal, goal_id)
+def delete_goal(
+    goal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    goal = db.query(SavingGoal).filter(SavingGoal.id == goal_id, SavingGoal.user_id == current_user.id).first()
     if not goal:
         raise HTTPException(404)
     db.query(Saving).filter(Saving.goal_id == goal_id).delete()
@@ -101,11 +115,16 @@ def delete_goal(goal_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/goals/{goal_id}/deposits", response_model=DepositOut, status_code=201)
-def add_deposit(goal_id: int, body: DepositCreate, db: Session = Depends(get_db)):
-    goal = db.get(SavingGoal, goal_id)
+def add_deposit(
+    goal_id: int,
+    body: DepositCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    goal = db.query(SavingGoal).filter(SavingGoal.id == goal_id, SavingGoal.user_id == current_user.id).first()
     if not goal:
         raise HTTPException(404)
-    dep = Saving(amount=body.amount, note=body.note, owner=goal.owner, goal_id=goal_id)
+    dep = Saving(amount=body.amount, note=body.note, owner=goal.owner, goal_id=goal_id, user_id=current_user.id)
     db.add(dep)
     db.commit()
     db.refresh(dep)
@@ -113,8 +132,13 @@ def add_deposit(goal_id: int, body: DepositCreate, db: Session = Depends(get_db)
 
 
 @router.patch("/deposits/{dep_id}", response_model=DepositOut)
-def update_deposit(dep_id: int, body: DepositUpdate, db: Session = Depends(get_db)):
-    dep = db.get(Saving, dep_id)
+def update_deposit(
+    dep_id: int,
+    body: DepositUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    dep = db.query(Saving).filter(Saving.id == dep_id, Saving.user_id == current_user.id).first()
     if not dep:
         raise HTTPException(404)
     if body.amount is not None:
@@ -127,8 +151,12 @@ def update_deposit(dep_id: int, body: DepositUpdate, db: Session = Depends(get_d
 
 
 @router.delete("/deposits/{dep_id}", status_code=204)
-def delete_deposit(dep_id: int, db: Session = Depends(get_db)):
-    dep = db.get(Saving, dep_id)
+def delete_deposit(
+    dep_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    dep = db.query(Saving).filter(Saving.id == dep_id, Saving.user_id == current_user.id).first()
     if not dep:
         raise HTTPException(404)
     db.delete(dep)
@@ -136,12 +164,13 @@ def delete_deposit(dep_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/legacy-total")
-def legacy_total(db: Session = Depends(get_db)):
-    """First goal info + total — used by alice.py."""
-    goals = db.query(SavingGoal).order_by(SavingGoal.id).all()
+def legacy_total(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    goals = db.query(SavingGoal).filter(SavingGoal.user_id == current_user.id).order_by(SavingGoal.id).all()
     if not goals:
-        orphans = db.query(Saving).filter(Saving.goal_id.is_(None)).all()
-        return {"goal_name": "Копилка", "target": None, "total": sum(s.amount for s in orphans), "goal_id": None}
+        return {"goal_name": "Копилка", "target": None, "total": 0, "goal_id": None}
     g = goals[0]
     deposits = db.query(Saving).filter(Saving.goal_id == g.id).all()
     return {"goal_name": g.name, "target": g.target, "total": sum(d.amount for d in deposits), "goal_id": g.id}

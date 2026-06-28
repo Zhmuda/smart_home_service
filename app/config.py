@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     timezone: str = "Europe/Moscow"
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    jwt_secret: str = "change-me-in-production-please"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_days: int = 30
 
     class Config:
         env_file = ".env"

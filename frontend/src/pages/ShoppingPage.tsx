@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api'
 import { Check, Pencil, Plus, ShoppingCart, Trash2, Users, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { avatarColor, useProfile } from '../contexts/ProfileContext'
@@ -19,7 +20,7 @@ export default function ShoppingPage() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   async function load() {
-    const res = await fetch(API)
+    const res = await apiFetch(API)
     if (res.ok) setItems(await res.json())
   }
 
@@ -29,7 +30,7 @@ export default function ShoppingPage() {
     const name = input.trim()
     if (!name) return
     const owner = filter === 'common' ? 'Общее' : (currentUser ?? 'Общее')
-    await fetch(API, {
+    await apiFetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, owner }),
@@ -40,17 +41,17 @@ export default function ShoppingPage() {
   }
 
   async function toggleBought(id: number) {
-    await fetch(`${API}/${id}/buy`, { method: 'PATCH' })
+    await apiFetch(`${API}/${id}/buy`, { method: 'PATCH' })
     load()
   }
 
   async function deleteItem(id: number) {
-    await fetch(`${API}/${id}`, { method: 'DELETE' })
+    await apiFetch(`${API}/${id}`, { method: 'DELETE' })
     load()
   }
 
   async function clearBought() {
-    await fetch(`${API}/bought/clear`, { method: 'DELETE' })
+    await apiFetch(`${API}/bought/clear`, { method: 'DELETE' })
     load()
   }
 
@@ -62,7 +63,7 @@ export default function ShoppingPage() {
   async function saveEdit(id: number) {
     const name = editValue.trim()
     if (!name) return
-    await fetch(`${API}/${id}`, {
+    await apiFetch(`${API}/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),

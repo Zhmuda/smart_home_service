@@ -5,6 +5,18 @@ from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, Str
 from app.db import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    password_hash = Column(String, nullable=False)
+    yandex_token = Column(String, nullable=True)
+    alice_token = Column(String, unique=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Scenario(Base):
     __tablename__ = "scenarios"
 
@@ -45,6 +57,7 @@ class Reminder(Base):
     __tablename__ = "reminders"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     subject = Column(String, nullable=False)
     remind_at = Column(DateTime, nullable=False, index=True)
     sent = Column(Boolean, default=False, nullable=False)
@@ -56,6 +69,7 @@ class ShoppingItem(Base):
     __tablename__ = "shopping_items"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String, nullable=False)
     bought = Column(Boolean, default=False, nullable=False)
     owner = Column(String, nullable=False, default="Общее")
@@ -66,6 +80,7 @@ class Expense(Base):
     __tablename__ = "expenses"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     amount = Column(Integer, nullable=False)
     category = Column(String, nullable=False)
     note = Column(String, nullable=True)
@@ -77,6 +92,7 @@ class SavingGoal(Base):
     __tablename__ = "saving_goals"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String, nullable=False, default="Копилка")
     target = Column(Integer, nullable=True)
     owner = Column(String, nullable=False, default="Общее")
@@ -86,6 +102,7 @@ class Saving(Base):
     __tablename__ = "savings"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     amount = Column(Integer, nullable=False)
     note = Column(String, nullable=True)
     owner = Column(String, nullable=False, default="Общее")
@@ -97,6 +114,7 @@ class KnowledgeEntry(Base):
     __tablename__ = "knowledge"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String, nullable=False)
     content = Column(String, nullable=False)
     category = Column(String, nullable=False, default="Разное")
@@ -109,6 +127,7 @@ class CalendarEvent(Base):
     __tablename__ = "calendar_events"
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String, nullable=False)
     person = Column(String, nullable=False)
     event_date = Column(String, nullable=False, index=True)  # YYYY-MM-DD

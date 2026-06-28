@@ -7,7 +7,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import CalendarEvent, Expense, KnowledgeEntry, Reminder, Saving, SavingGoal, Scenario, ScenarioRun, ShoppingItem
+from app.models import CalendarEvent, Expense, KnowledgeEntry, Reminder, Saving, SavingGoal, Scenario, ScenarioRun, ShoppingItem, User
 from app.scenario_engine import _last_snapshot, device_states, run_scenario
 from app.yandex_client import client
 
@@ -99,13 +99,16 @@ def _format_event_time(start: str | None, end: str | None) -> str:
     return ""
 
 
-def _query_calendar(text: str, db: Session) -> str:
+def _query_calendar(text: str, db: Session, uid: int | None = None) -> str:
     date_str = _parse_russian_date(text)
     if not date_str:
         now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
         date_str = now.date().strftime("%Y-%m-%d")
 
-    events = db.query(CalendarEvent).filter(CalendarEvent.event_date == date_str).order_by(CalendarEvent.start_time).all()
+    q = db.query(CalendarEvent).filter(CalendarEvent.event_date == date_str)
+    if uid:
+        q = q.filter(CalendarEvent.user_id == uid)
+    events = q.order_by(CalendarEvent.start_time).all()
     d = datetime.strptime(date_str, "%Y-%m-%d")
     label = f"{d.day} {_MONTH_NAMES[d.month]}"
 
@@ -240,12 +243,14 @@ def _shopping_list_reply(db: Session) -> str:
     return f"Нужно купить: {names}."
 
 
-def _monthly_expense_total(db: Session, category: str | None = None) -> str:
+def _monthly_expense_total(db: Session, category: str | None = None, uid: int | None = None) -> str:
     now = datetime.now(timezone.utc)
     q = db.query(func.sum(Expense.amount)).filter(
         extract("year", Expense.created_at) == now.year,
         extract("month", Expense.created_at) == now.month,
     )
+    if uid:
+        q = q.filter(Expense.user_id == uid)
     if category:
         q = q.filter(Expense.category.ilike(f"%{category}%"))
     total = q.scalar() or 0
@@ -254,7 +259,8 @@ def _monthly_expense_total(db: Session, category: str | None = None) -> str:
     return f"В этом месяце потрачено {total} рублей."
 
 
-async def _handle_command(command: str, db: Session) -> str:
+async def _handle_command(command: str, db: Session, user: "User | None" = None) -> str:
+    uid: int | None = user.id if user else None
     if any(w in command for w in ("как дома", "что дома", "сводка", "что происходит", "доклад")):
         return await _home_summary(db)
 
@@ -343,21 +349,29 @@ async def _handle_command(command: str, db: Session) -> str:
                 return f"Не нашла пользователя «{owner_spoken}». {hint}"
             owner = matched
 
-        db.add(ShoppingItem(name=item_name, owner=owner))
+        db.add(ShoppingItem(name=item_name, owner=owner, user_id=uid))
         db.commit()
         if owner == "Общее":
             return f"Добавила «{item_name}» в общий список покупок."
         return f"Добавила «{item_name}» в список {owner}."
 
     if any(w in command for w in ("что нужно купить", "что купить", "список покупок", "что в списке")):
-        return _shopping_list_reply(db)
+        q = db.query(ShoppingItem).filter(ShoppingItem.bought.is_(False))
+        if uid:
+            q = q.filter(ShoppingItem.user_id == uid)
+        pending = q.all()
+        if not pending:
+            return "Список покупок пуст."
+        return "Нужно купить: " + ", ".join(i.name for i in pending) + "."
 
     if command.startswith("купил") or command.startswith("купила"):
         m = re.search(r'купил[а]?\s+(.+)', command)
         item_name = m.group(1).strip() if m else None
         if item_name:
-            items = db.query(ShoppingItem).filter(ShoppingItem.bought.is_(False)).all()
-            match = next((i for i in items if _stem(item_name[:5]) in i.name.lower()), None)
+            q = db.query(ShoppingItem).filter(ShoppingItem.bought.is_(False))
+            if uid:
+                q = q.filter(ShoppingItem.user_id == uid)
+            match = next((i for i in q.all() if _stem(item_name[:5]) in i.name.lower()), None)
             if match:
                 match.bought = True
                 db.commit()
@@ -371,28 +385,31 @@ async def _handle_command(command: str, db: Session) -> str:
             return "Не поняла сумму. Скажите: «записи 500 рублей на продукты»."
         cat_m = re.search(r'на\s+(\w+)', command)
         category = cat_m.group(1) if cat_m else "прочее"
-        db.add(Expense(amount=amount, category=category))
+        db.add(Expense(amount=amount, category=category, user_id=uid))
         db.commit()
         return f"Записала {amount} рублей на «{category}»."
 
     if "сколько потратили" in command or "расход за месяц" in command or "итог за месяц" in command:
-        return _monthly_expense_total(db)
+        return _monthly_expense_total(db, uid=uid)
 
     if re.match(r'сколько на ', command):
         cat_m = re.search(r'сколько на\s+(\w+)', command)
         if cat_m:
-            return _monthly_expense_total(db, cat_m.group(1))
+            return _monthly_expense_total(db, cat_m.group(1), uid=uid)
 
     # --- Календарь (запрос) ---
     if any(w in command for w in ("что на", "что у", "что запланировано", "события на", "дела на")):
-        return _query_calendar(command, db)
+        return _query_calendar(command, db, uid=uid)
 
     # --- Календарь (добавление) ---
     if any(w in command for w in ("запланируй", "добавь в календарь", "добавь событие", "добавь дело")):
         return "__START_CALENDAR__"
 
     # --- Копилка ---
-    saving_goals_all = db.query(SavingGoal).order_by(SavingGoal.id).all()
+    _goals_q = db.query(SavingGoal)
+    if uid:
+        _goals_q = _goals_q.filter(SavingGoal.user_id == uid)
+    saving_goals_all = _goals_q.order_by(SavingGoal.id).all()
     _goal_name_hit = [g for g in saving_goals_all if _name_matches(g.name, command)]
     _is_saving_cmd = ("положи" in command or ("добавь" in command and "список" not in command)) and (
         "копилк" in command or bool(_goal_name_hit)
@@ -414,12 +431,12 @@ async def _handle_command(command: str, db: Session) -> str:
             target_goal = None
 
         if target_goal:
-            dep = Saving(amount=amount, owner=target_goal.owner, goal_id=target_goal.id)
+            dep = Saving(amount=amount, owner=target_goal.owner, goal_id=target_goal.id, user_id=uid)
             db.add(dep)
             db.commit()
             total = db.query(func.sum(Saving.amount)).filter(Saving.goal_id == target_goal.id).scalar() or 0
             return f"Добавила {amount} рублей в «{target_goal.name}». Итого: {total} рублей."
-        dep = Saving(amount=amount, owner="Общее")
+        dep = Saving(amount=amount, owner="Общее", user_id=uid)
         db.add(dep)
         db.commit()
         return f"Добавила {amount} рублей в копилку."
@@ -476,7 +493,12 @@ async def _handle_command(command: str, db: Session) -> str:
 
 
 @router.post("/webhook")
-async def alice_webhook(body: dict, db: Session = Depends(get_db)):
+async def alice_webhook(body: dict, token: str | None = None, db: Session = Depends(get_db)):
+    # Identify user by alice_token query param (?token=...)
+    current_user: User | None = None
+    if token:
+        current_user = db.query(User).filter(User.alice_token == token).first()
+
     request = body.get("request", {})
     session = body.get("session", {})
     session_id = session.get("session_id", "")
@@ -527,7 +549,8 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
         repeat = _parse_repeat(command) if command not in ("нет", "не надо", "без повтора", "разово") else None
         subject = state["subject"]
         remind_at = datetime.fromisoformat(state["remind_at"])
-        db.add(Reminder(subject=subject, remind_at=remind_at, repeat=repeat))
+        uid = current_user.id if current_user else None
+        db.add(Reminder(subject=subject, remind_at=remind_at, repeat=repeat, user_id=uid))
         db.commit()
         _session_state.pop(session_id, None)
         _REPEAT_RU = {"daily": "ежедневно", "weekly": "еженедельно", "monthly": "ежемесячно", "yearly": "ежегодно"}
@@ -536,7 +559,10 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
 
     # --- Редактирование напоминания ---
     elif state and state["step"] == "edit_awaiting_which":
-        pending = db.query(Reminder).filter(Reminder.sent.is_(False)).all()
+        q = db.query(Reminder).filter(Reminder.sent.is_(False))
+        if current_user:
+            q = q.filter(Reminder.user_id == current_user.id)
+        pending = q.all()
         match = next((r for r in pending if _name_matches(r.subject, command)), None)
         if not match:
             names = ", ".join(f"«{r.subject}»" for r in pending[:3]) or "нет активных"
@@ -666,7 +692,7 @@ async def alice_webhook(body: dict, db: Session = Depends(get_db)):
         text = GREETING
 
     else:
-        text = await _handle_command(command, db)
+        text = await _handle_command(command, db, user=current_user)
         if text == "__START_CALENDAR__":
             _session_state[session_id] = {"step": "cal_awaiting_person"}
             text = "Для кого запланировать дело?"
